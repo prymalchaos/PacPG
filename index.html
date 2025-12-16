@@ -15,7 +15,12 @@
       --good:#7CFF9A;
       --gold:#ffd36e;
     }
-    html,body{height:100%; margin:0; background:var(--bg); color:var(--ink); font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; overflow:hidden;}
+    html,body{
+      height:100%; margin:0;
+      background:var(--bg); color:var(--ink);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      overflow:hidden;
+    }
     #wrap{display:flex; flex-direction:column; height:100%;}
     #gameArea{flex:1; display:flex; align-items:center; justify-content:center; padding:8px;}
     canvas{
@@ -256,7 +261,6 @@
 
 <div id="toast"></div>
 
-<!-- Rules / menu modal -->
 <div id="modalBack">
   <div id="modal">
     <h1>MAZE // HUNGER</h1>
@@ -308,11 +312,18 @@
   function resize() {
     const rect = canvas.getBoundingClientRect();
     const dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
-    canvas.width = Math.floor(rect.width * dpr);
-    canvas.height = Math.floor(rect.height * dpr);
+    canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+    canvas.height = Math.max(1, Math.floor(rect.height * dpr));
     ctx.setTransform(dpr,0,0,dpr,0,0);
   }
-  window.addEventListener('resize', resize, { passive:true });
+
+  // Extra-mobile-safe: re-resize on orientation/visibility changes
+  window.addEventListener('resize', () => requestAnimationFrame(resize), { passive:true });
+  window.addEventListener('orientationchange', () => setTimeout(resize, 60), { passive:true });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) setTimeout(resize, 60);
+  });
+
   resize();
 
   // ---------------------------
@@ -345,17 +356,37 @@
     showToast._t = setTimeout(()=>toast.classList.remove('show'), 900);
   }
 
+  // ---------------------------
+  // Modal control (FIX INCLUDED)
+  // ---------------------------
+  let paused = false;
+  let last = performance.now();
+
   function openModal(){
     modalBack.classList.add('show');
     paused = true;
+    // Make sure canvas isn't left with a stale layout after overlay appears
+    requestAnimationFrame(resize);
   }
+
   function closeModal(){
     modalBack.classList.remove('show');
     paused = false;
-    last = performance.now();
+
+    // ✅ Critical fix: force re-measure after layout changes (iOS/GitHub Pages/Safari)
+    requestAnimationFrame(() => {
+      resize();
+      last = performance.now();
+      render(0);
+    });
   }
 
-  btnStart.addEventListener('click', ()=>{ closeModal(); });
+  btnStart.addEventListener('click', ()=>{
+    closeModal();
+    // Belt + braces: one more resize after next paint
+    requestAnimationFrame(resize);
+  });
+
   btnClose.addEventListener('click', ()=>{ closeModal(); });
   btnResetRun.addEventListener('click', ()=>{
     resetRun();
@@ -373,14 +404,13 @@
   // Game constants
   // ---------------------------
   const CELL = 22;
-  const MAZE_W = 25; // odd
+  const MAZE_W = 25;
   const MAZE_H = 19;
 
   const WALL = 1, FLOOR = 0;
 
-  // gameplay tuning
-  const EXIT_THRESHOLD_BASE = 30; // pellets must be below this to unlock exit
-  const EXIT_THRESHOLD_STAGE_DECAY = 1; // gets a bit stricter over stages
+  const EXIT_THRESHOLD_BASE = 30;
+  const EXIT_THRESHOLD_STAGE_DECAY = 1;
 
   // ---------------------------
   // RNG
@@ -395,7 +425,7 @@
   }
 
   // ---------------------------
-  // Maze generation: perfect maze + loops
+  // Maze gen
   // ---------------------------
   function genMaze(stage) {
     const seed = (Date.now() ^ (stage*99991)) >>> 0;
@@ -425,7 +455,6 @@
       stack.push({x:nx,y:ny});
     }
 
-    // Add loops (more as stage increases)
     const loops = Math.min(55, 14 + stage*7);
     for(let i=0;i<loops;i++){
       const x = 1 + ((rand()*(w-2))|0);
@@ -436,7 +465,6 @@
       if(horiz || vert) grid[y][x]=FLOOR;
     }
 
-    // Pellets (high density, but not full coverage)
     const pellets = new Set();
     for(let y=1;y<h-1;y++){
       for(let x=1;x<w-1;x++){
@@ -447,7 +475,6 @@
       }
     }
 
-    // Exit far from spawn
     let exit = {x:w-2,y:h-2};
     let best = -1;
     for(let tries=0;tries<260;tries++){
@@ -474,7 +501,7 @@
     hp: 100,
     hunger: 0,
     multiplier: 1.0,
-    multDecay: 0, // accumulates when not moving
+    multDecay: 0,
     scanTimer: 0,
     powerTimer: 0,
     powerCooldown: 0,
@@ -488,10 +515,9 @@
       x:1,y:1, px:1,py:1,
       dir:{x:1,y:0},
       want:{x:1,y:0},
-      speed: 7.1,           // cells/sec
+      speed: 7.1,
       invuln: 0,
-      // buffered turning feel
-      turnBuffer: 0.22,     // seconds
+      turnBuffer: 0.22,
       wantAge: 0,
     },
 
@@ -515,7 +541,6 @@
     return (Math.abs(px-cx) < 0.10 && Math.abs(py-cy) < 0.10);
   }
 
-  // BFS step (maze is small; OK)
   function nextStepToward(sx,sy,tx,ty){
     const w = MAZE_W, h = MAZE_H;
     const prev = new Int32Array(w*h).fill(-1);
@@ -529,7 +554,6 @@
       const cx = cur % w;
       const cy = (cur / w) | 0;
 
-      // neighbors in fixed order for stable movement
       const n1 = cur+1;
       if(cx+1<w && prev[n1]<0 && !isWall(cx+1,cy)){ prev[n1]=cur; q.push(n1); }
       const n2 = cur-1;
@@ -539,6 +563,7 @@
       const n4 = cur-w;
       if(cy-1>=0 && prev[n4]<0 && !isWall(cx,cy-1)){ prev[n4]=cur; q.push(n4); }
     }
+
     if(prev[goal]<0) return {x:sx,y:sy};
     let cur = goal;
     let p = prev[cur];
@@ -589,8 +614,6 @@
   // ---------------------------
   // Input: touch + keyboard + gamepad
   // ---------------------------
-  let paused = false;
-
   const input = {
     up:false, down:false, left:false, right:false,
     power:false, scan:false,
@@ -599,7 +622,7 @@
 
   function setWanted(dir){
     state.p.want = dir;
-    state.p.wantAge = 0; // “fresh” wanted direction
+    state.p.wantAge = 0;
   }
 
   function setWantedFromInput(){
@@ -609,7 +632,6 @@
     if(input.down)  setWanted({x:0,y:1});
   }
 
-  // D-pad touch
   const dpad = document.getElementById('dpad');
   const dpadButtons = [...dpad.querySelectorAll('.btn[data-dir]')];
 
@@ -637,18 +659,15 @@
   dpadButtons.forEach(btn=>{
     const dir = btn.dataset.dir;
     if(dir === 'none') {
-      // “●” opens menu (nice touch UX)
       bindPress(btn, ()=>openModal(), ()=>{});
       return;
     }
     bindPress(btn, ()=>activateDir(dir,true), ()=>activateDir(dir,false));
   });
 
-  // Action buttons
   bindPress(btnPower, ()=>{ input.power=true; }, ()=>{ input.power=false; });
   bindPress(btnScan,  ()=>{ input.scan=true;  }, ()=>{ input.scan=false;  });
 
-  // Keyboard
   window.addEventListener('keydown', (e)=>{
     if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','Shift','Escape'].includes(e.key)) e.preventDefault();
     if(e.key==='Escape'){ openModal(); return; }
@@ -674,7 +693,6 @@
     setWantedFromInput();
   });
 
-  // Gamepad
   let lastPadConnected = false;
   window.addEventListener('gamepadconnected', ()=>{
     input.anyGamepad = true;
@@ -714,8 +732,8 @@
     input.left = (axX < -dead) || !!dLeft;
     input.right = (axX > dead) || !!dRight;
 
-    input.power = !!gp.buttons[0]?.pressed; // A/Cross
-    input.scan  = !!gp.buttons[1]?.pressed; // B/Circle
+    input.power = !!gp.buttons[0]?.pressed;
+    input.scan  = !!gp.buttons[1]?.pressed;
 
     if(gp.buttons[9]?.pressed){ // Start
       openModal();
@@ -733,7 +751,6 @@
     state.powerCooldown = 2.2;
     showToast('POWER');
   }
-
   function tryScan(){
     if(state.scanCooldown>0 || state.scanTimer>0) return;
     state.scanTimer = 1.15;
@@ -744,27 +761,18 @@
   // ---------------------------
   // Main loop
   // ---------------------------
-  let last = performance.now();
-
   function tick(now){
     const dt = Math.min(0.033, (now - last) / 1000);
     last = now;
 
     pollGamepad();
 
-    if(paused){
+    if(paused || state.gameOver){
       render(dt);
       requestAnimationFrame(tick);
       return;
     }
 
-    if(state.gameOver){
-      render(dt);
-      requestAnimationFrame(tick);
-      return;
-    }
-
-    // timers
     state.p.invuln = Math.max(0, state.p.invuln - dt);
     state.scanTimer = Math.max(0, state.scanTimer - dt);
     state.powerTimer = Math.max(0, state.powerTimer - dt);
@@ -772,36 +780,27 @@
     state.scanCooldown = Math.max(0, state.scanCooldown - dt);
     state.hitFlash = Math.max(0, state.hitFlash - dt*1.8);
 
-    // age wanted direction
     state.p.wantAge += dt;
 
-    // actions (tap/hold safe)
     if(input.power) tryPower();
     if(input.scan) tryScan();
 
-    // action button UI
     btnPower.classList.toggle('active', state.powerTimer>0);
     btnPower.classList.toggle('disabled', state.powerCooldown>0 && state.powerTimer<=0);
-
     btnScan.classList.toggle('active', state.scanTimer>0);
     btnScan.classList.toggle('disabled', state.scanCooldown>0 && state.scanTimer<=0);
 
-    // -----------------------
-    // Hunger + multiplier: compulsion engine
-    // -----------------------
+    // Hunger + multiplier
     const movingInput = (input.up||input.down||input.left||input.right) || (state.p.dir.x!==0||state.p.dir.y!==0);
 
-    // Hunger rises. Faster when idle.
     state.hunger += dt * (movingInput ? 5.0 : 8.5);
     state.hunger = clamp(state.hunger, 0, 100);
 
-    // If hunger maxed, take damage
     if(state.hunger >= 100){
       state.hp -= dt * 11.0;
       state.hitFlash = Math.max(state.hitFlash, 0.25);
     }
 
-    // Multiplier: rises while moving, decays while idle, resets on hit.
     if(movingInput){
       state.multiplier += dt * 0.18;
       state.multiplier = clamp(state.multiplier, 1.0, 6.0);
@@ -814,19 +813,15 @@
       }
     }
 
-    // -----------------------
-    // Player movement: buffered turns + snap
-    // -----------------------
+    // Player movement
     const p = state.p;
 
-    // When near center, attempt turn if we have a fresh want direction
     if(atCellCenter(p.px, p.py)){
       const cx = Math.round(p.px);
       const cy = Math.round(p.py);
       p.x = cx; p.y = cy;
       p.px = cx; p.py = cy;
 
-      // If wanted direction is still “recent”, apply it if possible
       if(p.wantAge <= p.turnBuffer){
         const wx = p.want.x, wy = p.want.y;
         if((wx!==0||wy!==0) && canMoveTo(cx+wx, cy+wy)){
@@ -834,12 +829,10 @@
         }
       }
 
-      // If current direction blocked, stop
       if(!canMoveTo(cx+p.dir.x, cy+p.dir.y)){
         p.dir = {x:0,y:0};
       }
 
-      // Pellet eat at cell center
       const k = key(p.x,p.y);
       if(state.map.pellets.has(k)){
         state.map.pellets.delete(k);
@@ -847,7 +840,6 @@
         const pts = 10 * state.multiplier;
         state.score += Math.round(pts);
 
-        // Hunger relief + tiny heal reward at high risk
         state.hunger = clamp(state.hunger - 14, 0, 100);
         if(state.hunger > 70) state.hp = clamp(state.hp + 0.6, 0, 100);
       }
@@ -860,7 +852,6 @@
       const nx = p.px + p.dir.x * spd * dt;
       const ny = p.py + p.dir.y * spd * dt;
 
-      // collision clamp: if next cell is wall and we'd cross past boundary, snap to center and stop
       const cx = Math.round(p.px), cy = Math.round(p.py);
 
       if(p.dir.x!==0){
@@ -884,9 +875,7 @@
       }
     }
 
-    // -----------------------
     // Exit condition
-    // -----------------------
     const pelletsLeft = state.map.pellets.size;
     const threshold = Math.max(0, EXIT_THRESHOLD_BASE - (state.stage*EXIT_THRESHOLD_STAGE_DECAY));
     state.exitReady = pelletsLeft <= threshold;
@@ -896,14 +885,11 @@
 
     if(onExit && state.exitReady){
       state.stage++;
-      // small reward for cashing out
       state.score += Math.round(75 * state.multiplier);
       resetStage();
     }
 
-    // -----------------------
-    // Enemy AI: BFS chase, with mild scan slow
-    // -----------------------
+    // Enemy
     const e = state.e;
     const eSpeed = e.speed * (state.scanTimer>0 ? 0.88 : 1.0);
 
@@ -924,9 +910,6 @@
       e.py += e.dy * eSpeed * dt;
     }
 
-    // -----------------------
-    // Collision
-    // -----------------------
     const dist = Math.hypot((p.px - e.px), (p.py - e.py));
     if(dist < 0.40 && p.invuln<=0){
       state.hp -= 19;
@@ -936,16 +919,13 @@
       showToast('HIT!');
     }
 
-    // HP / game over
     state.hp = clamp(state.hp, 0, 100);
     if(state.hp<=0){
       state.gameOver = true;
       showToast('SYSTEM FAILURE — Tap to restart');
     }
 
-    // -----------------------
     // UI update
-    // -----------------------
     uiScore.textContent = state.score.toString();
     uiMult.textContent = `×${state.multiplier.toFixed(1)} (${movingInput ? 'rolling' : 'decay'})`;
 
@@ -963,7 +943,6 @@
     uiExitState.style.color = state.exitReady ? 'var(--good)' : 'var(--ink)';
     uiPelLeft.textContent = `pellets: ${pelletsLeft} (need ≤ ${threshold})`;
 
-    // highlight scan/power buttons for availability
     btnPower.classList.toggle('hot', state.powerCooldown<=0 && state.powerTimer<=0);
     btnScan.classList.toggle('hot', state.scanCooldown<=0 && state.scanTimer<=0);
 
@@ -971,21 +950,22 @@
     requestAnimationFrame(tick);
   }
 
-  // Restart on tap if game over
+  // Tap canvas to restart when dead
   canvas.addEventListener('pointerdown', ()=>{
     if(state.gameOver){
       resetRun();
+      // after restart, ensure correct sizing on mobile
+      requestAnimationFrame(() => { resize(); render(0); });
     }
   });
 
   // ---------------------------
-  // Render (retro polish)
+  // Render
   // ---------------------------
   function render(dt){
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
 
-    // Fit maze
     const mazePxW = MAZE_W * CELL;
     const mazePxH = MAZE_H * CELL;
     const scale = Math.min((w-18)/mazePxW, (h-18)/mazePxH);
@@ -994,18 +974,15 @@
     const ox = (w - drawW)/2;
     const oy = (h - drawH)/2;
 
-    // Base background
     ctx.fillStyle = '#04040e';
     ctx.fillRect(0,0,w,h);
 
-    // Vignette
     const vg = ctx.createRadialGradient(w*0.5,h*0.45, 40, w*0.5,h*0.60, Math.max(w,h)*0.75);
     vg.addColorStop(0,'rgba(0,0,0,0)');
     vg.addColorStop(1,'rgba(0,0,0,0.65)');
     ctx.fillStyle = vg;
     ctx.fillRect(0,0,w,h);
 
-    // Hit flash overlay
     if(state.hitFlash>0){
       ctx.fillStyle = `rgba(255,90,122,${0.18*state.hitFlash})`;
       ctx.fillRect(0,0,w,h);
@@ -1015,10 +992,8 @@
     ctx.translate(ox, oy);
     ctx.scale(scale, scale);
 
-    // Draw maze tiles
     const scan = state.scanTimer>0;
 
-    // walls glow
     ctx.shadowBlur = 10;
     ctx.shadowColor = 'rgba(125,249,255,0.35)';
 
@@ -1034,7 +1009,6 @@
       }
     }
 
-    // Pellets (glyphs)
     ctx.shadowBlur = scan ? 14 : 8;
     ctx.shadowColor = scan ? 'rgba(125,249,255,0.55)' : 'rgba(232,233,255,0.25)';
     for(const k of state.map.pellets){
@@ -1047,7 +1021,6 @@
       ctx.fill();
     }
 
-    // Exit tile
     const ex = state.map.exit.x*CELL;
     const ey = state.map.exit.y*CELL;
     ctx.shadowBlur = 16;
@@ -1058,7 +1031,6 @@
     ctx.lineWidth = 2;
     ctx.strokeRect(ex+4, ey+4, CELL-8, CELL-8);
 
-    // Enemy
     const e = state.e;
     const ecx = e.px*CELL + CELL*0.5;
     const ecy = e.py*CELL + CELL*0.5;
@@ -1070,7 +1042,6 @@
     ctx.fillStyle = scan ? 'rgba(255,90,122,0.95)' : 'rgba(255,90,122,0.83)';
     ctx.fill();
 
-    // Player (Pac-ish wedge)
     const p = state.p;
     const pcx = p.px*CELL + CELL*0.5;
     const pcy = p.py*CELL + CELL*0.5;
@@ -1085,7 +1056,6 @@
     ctx.fillStyle = (p.invuln>0) ? 'rgba(125,249,255,0.95)' : 'rgba(232,233,255,0.90)';
     ctx.fill();
 
-    // POWER aura
     if(state.powerTimer>0){
       ctx.shadowBlur = 22;
       ctx.shadowColor = 'rgba(125,249,255,0.6)';
@@ -1096,7 +1066,6 @@
       ctx.stroke();
     }
 
-    // Hunger “panic tint”
     if(state.hunger>70){
       const a = (state.hunger-70)/30;
       ctx.shadowBlur = 0;
@@ -1104,7 +1073,6 @@
       ctx.fillRect(0,0,MAZE_W*CELL,MAZE_H*CELL);
     }
 
-    // Pause overlay
     if(paused){
       ctx.shadowBlur = 0;
       ctx.fillStyle = 'rgba(0,0,0,0.62)';
@@ -1118,7 +1086,6 @@
       ctx.fillText('Close the menu to resume', (MAZE_W*CELL)/2, (MAZE_H*CELL)/2 + 18);
     }
 
-    // Game over overlay
     if(state.gameOver){
       ctx.shadowBlur = 0;
       ctx.fillStyle = 'rgba(0,0,0,0.70)';
@@ -1134,17 +1101,19 @@
 
     ctx.restore();
 
-    // Scanlines overlay (cheap CRT)
+    // scanlines overlay
     ctx.save();
     ctx.globalAlpha = 0.18;
-    ctx.fillStyle = 'rgba(255,255,255,0.04)';
     const lineH = 3;
     for(let y=0; y<h; y+=lineH){
+      ctx.fillStyle = 'rgba(255,255,255,0.04)';
       ctx.fillRect(0, y, w, 1);
     }
     ctx.restore();
   }
 
+  // Ensure we draw something immediately (helps Safari)
+  render(0);
   requestAnimationFrame(tick);
 })();
 </script>
