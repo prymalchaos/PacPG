@@ -16,9 +16,11 @@
       --gold:#ffd36e;
 
       --pad: 10px;
-      --uiH: 42svh;
-      --uiMax: 430px;
-      --uiMin: 230px;
+
+      /* Tighten bottom UI so it always fits on mobile */
+      --uiTarget: 36svh;
+      --uiMin: 196px;
+      --uiMax: 400px;
     }
 
     html,body{
@@ -30,8 +32,9 @@
       height:100%;
     }
 
+    /* dvh fixes iOS address-bar lies */
     body{
-      height: 100svh;
+      height: 100dvh;
       padding-top: env(safe-area-inset-top);
       padding-bottom: env(safe-area-inset-bottom);
       padding-left: env(safe-area-inset-left);
@@ -39,16 +42,21 @@
       box-sizing:border-box;
     }
 
-    #wrap{height:100%; display:flex; flex-direction:column;}
+    #wrap{
+      height:100%;
+      display:flex;
+      flex-direction:column;
+      min-height:0;
+    }
 
     #gameArea{
-      flex:1;
+      flex: 1 1 auto;
+      min-height:0;
       display:flex;
       align-items:center;
       justify-content:center;
       padding: var(--pad);
       box-sizing:border-box;
-      min-height:0;
     }
 
     canvas{
@@ -62,8 +70,7 @@
     }
 
     #ui{
-      height: min(var(--uiH), var(--uiMax));
-      min-height: var(--uiMin);
+      height: clamp(var(--uiMin), var(--uiTarget), var(--uiMax));
       background:linear-gradient(180deg, rgba(11,13,27,.92), rgba(8,9,20,.98));
       border-top:1px solid rgba(125,249,255,.14);
       padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
@@ -103,13 +110,6 @@
     .fill.good{background:var(--good);}
     .fill.gold{background:var(--gold);}
 
-    #controlsLeft, #controlsRight{
-      display:flex;
-      gap:10px;
-      align-items:stretch;
-      min-width:0;
-    }
-
     .btn{
       display:flex; align-items:center; justify-content:center;
       background:rgba(255,255,255,.05);
@@ -141,11 +141,12 @@
       display:flex;
       flex-direction:column;
       gap:10px;
-      width:min(34vw, 200px);
+      width: min(34vw, 200px);
       max-width: 200px;
       min-width: 0;
+      height: 100%;
     }
-    .bigBtn{flex:1; min-height:64px; font-size:16px;}
+    .bigBtn{flex:1; min-height:56px; font-size:15px;}
     .hint{font-size:12px; color:var(--dim); margin-top:6px; line-height:1.25;}
     .row{display:flex; gap:8px; align-items:center; justify-content:space-between;}
 
@@ -163,19 +164,20 @@
     }
     #toast.show{opacity:1; transform:translateY(0);}
 
-    /* Virtual joystick */
+    /* Virtual joystick — reduced max size so it fits vertically */
     #joyWrap{
       display:flex;
       flex-direction:column;
       gap:8px;
-      width:min(42vw, 240px);
-      max-width:240px;
+      width: min(44vw, 220px);
+      max-width:220px;
       min-width:0;
+      height:100%;
     }
     #joy{
       position:relative;
-      width: min(40vw, 220px);
-      max-width:220px;
+      width: min(40vw, 190px);
+      max-width:190px;
       aspect-ratio:1/1;
       border-radius:999px;
       background:rgba(255,255,255,.03);
@@ -271,7 +273,6 @@
       cursor:pointer;
     }
 
-    /* Error overlay (only if something crashes) */
     #errBox{
       position:absolute; left:12px; right:12px; bottom:calc(12px + env(safe-area-inset-bottom));
       background:rgba(0,0,0,.78);
@@ -302,7 +303,7 @@
       <div class="card">
         <div class="label">Score</div>
         <div id="score" class="value">0</div>
-        <div id="mult" class="sub">×1.0 (keep moving)</div>
+        <div id="mult" class="sub">×1.0</div>
       </div>
       <div class="card">
         <div class="label">Integrity</div>
@@ -318,6 +319,12 @@
         <div class="label">Fury</div>
         <div id="fury" class="value">0</div>
         <div class="bar"><div id="furFill" class="fill gold"></div></div>
+        <div id="atkReady" class="sub">ATTACK: —</div>
+      </div>
+      <div class="card">
+        <div class="label">Weapon</div>
+        <div id="weaponName" class="value">SWORD</div>
+        <div id="weaponInfo" class="sub">Mk1 • cost 20 • range 1</div>
       </div>
       <div class="card">
         <div class="label">Stage</div>
@@ -339,7 +346,7 @@
           <div id="joyKnob"></div>
         </div>
         <div id="joyRow">
-          <div class="hint" style="margin:0;">4-way snap. Press early to auto-turn.</div>
+          <div class="hint" style="margin:0;">4-way snap • buffered turns</div>
           <div id="menuBtn" class="btn">MENU</div>
         </div>
       </div>
@@ -351,8 +358,8 @@
         <div id="btnPower" class="btn bigBtn">POWER</div>
         <div id="btnAttack" class="btn bigBtn">ATTACK</div>
         <div class="hint">
-          POWER: speed burst (cooldown)<br/>
-          ATTACK: spend Fury to strike (kill → full heal)
+          POWER: speed burst<br/>
+          ATTACK: timing slash (hit → i-frames)
         </div>
         <div class="row hint">
           <span>Gamepad:</span><span>A=POWER, B=ATTACK</span>
@@ -377,7 +384,8 @@
           <li>Hunger rises constantly. At max, you take damage.</li>
           <li>Clear enough glyphs to unlock the <b>Exit</b>.</li>
           <li><b>Sentinels</b> hunt you. Touch = damage.</li>
-          <li><b>ATTACK</b> costs Fury. Killing a Sentinel heals you to full — but it returns <b>far away</b> and <b>splits into two</b>.</li>
+          <li><b>ATTACK</b> costs Fury. If you <b>hit</b>, you get brief <b>i-frames</b> to run past. If you <b>miss</b>, you can take damage.</li>
+          <li>Killing a Sentinel heals you to full — it returns far away and splits into two.</li>
         </ul>
       </div>
 
@@ -452,6 +460,10 @@
   const uiHunFill = document.getElementById('hunFill');
   const uiFury = document.getElementById('fury');
   const uiFurFill = document.getElementById('furFill');
+  const uiAtkReady = document.getElementById('atkReady');
+  const uiWeaponName = document.getElementById('weaponName');
+  const uiWeaponInfo = document.getElementById('weaponInfo');
+
   const uiStage = document.getElementById('stage');
   const uiPadHint = document.getElementById('padHint');
   const uiExitState = document.getElementById('exitState');
@@ -499,7 +511,7 @@
   btnResetRun.addEventListener('click', ()=>{ resetRun(); closeModal(); });
   menuBtn.addEventListener('click', ()=> openModal());
 
-  const FIRST_KEY = 'maze_hunger_seen_rules_v3';
+  const FIRST_KEY = 'maze_hunger_seen_rules_v4';
   if(!localStorage.getItem(FIRST_KEY)){
     openModal();
     localStorage.setItem(FIRST_KEY, '1');
@@ -521,17 +533,19 @@
   const EXIT_THRESHOLD_BASE = 30;
   const EXIT_THRESHOLD_STAGE_DECAY = 1;
 
-  // Combat
+  // Combat (Sword Mk1)
   const MAX_HP = 100;
   const MAX_FURY = 100;
   const FURY_PER_PELLET = 4;
+
   const ATTACK_COST = 20;
   const ATTACK_CD = 0.28;
-  const ATTACK_RANGE = 1; // cells ahead
+  const ATTACK_RANGE = 1;       // cell in front
+  const ATTACK_IFRAMES_ON_HIT = 0.55; // THIS is the “run past safely” window
 
   // Enemies
   const BASE_SENTINEL_HP = 5;
-  const RESPAWN_DELAY = 1.0; // seconds
+  const RESPAWN_DELAY = 1.0;
   const MIN_RESPAWN_DIST = 10;
   const MAX_SENTINELS = 10;
 
@@ -550,7 +564,6 @@
   function key(x,y){ return (x<<16)|y; }
   function unkey(k){ return {x:(k>>>16)&0xffff, y:k&0xffff}; }
   function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
-
   function manhattan(ax,ay,bx,by){ return Math.abs(ax-bx) + Math.abs(ay-by); }
 
   // ---------------------------
@@ -651,8 +664,8 @@
       invuln: 0
     },
 
-    enemies: [],      // active sentinels
-    respawns: []      // pending respawns {t,x,y,level,speed,hpMax}
+    enemies: [],
+    respawns: []
   };
 
   function isWall(x,y){
@@ -667,7 +680,7 @@
     return (Math.abs(px-cx) < 0.10 && Math.abs(py-cy) < 0.10);
   }
 
-  // BFS next step (queue index = no slow shift)
+  // BFS next step
   function nextStepToward(sx,sy,tx,ty){
     const w = MAZE_W, h = MAZE_H;
     const start = sy*w+sx, goal = ty*w+tx;
@@ -688,7 +701,6 @@
       const cx = cur % w;
       const cy = (cur / w) | 0;
 
-      // 4-neigh
       if(cx+1<w){
         const n=cur+1;
         if(prev[n]<0 && !isWall(cx+1,cy)){ prev[n]=cur; q[qt++]=n; }
@@ -707,7 +719,7 @@
       }
     }
 
-    if(prev[goal]<0) return {x:sx,y:sy}; // unreachable
+    if(prev[goal]<0) return {x:sx,y:sy};
 
     let cur = goal;
     let p = prev[cur];
@@ -721,19 +733,15 @@
     const grid = state.map.grid;
     const w = MAZE_W, h = MAZE_H;
 
-    // Try random samples first
     for(let tries=0; tries<600; tries++){
       const x = 1 + ((state.rand()*(w-2))|0);
       const y = 1 + ((state.rand()*(h-2))|0);
       if(grid[y][x]!==FLOOR) continue;
       if(manhattan(x,y,px,py) < minDist) continue;
-
-      // avoid spawning on exit tile too (feels cheap)
       if(x===state.map.exit.x && y===state.map.exit.y) continue;
       return {x,y};
     }
 
-    // Fallback: pick farthest floor tile
     let best = null;
     let bestD = -1;
     for(let y=1;y<h-1;y++){
@@ -749,7 +757,7 @@
 
   function spawnSentinelAt(x,y, level=1, speed=5.6, hpMax=BASE_SENTINEL_HP){
     if(state.enemies.length >= MAX_SENTINELS) return;
-    const s = {
+    state.enemies.push({
       id: (Math.random().toString(36).slice(2) + Date.now().toString(36)),
       x, y,
       px:x, py:y,
@@ -757,12 +765,11 @@
       speed,
       stepAge: 0,
       stuckAge: 0,
-      invuln: 0.0, // spawn protection
+      invuln: 0.25, // short spawn protection
       level,
       hpMax,
       hp: hpMax
-    };
-    state.enemies.push(s);
+    });
   }
 
   function spawnStageSentinels(){
@@ -771,6 +778,7 @@
 
     const count = Math.min(MAX_SENTINELS, 1 + Math.floor(state.stage / 2));
     const p = state.p;
+
     for(let i=0;i<count;i++){
       const pos = findFarSpawn(p.x,p.y, MIN_RESPAWN_DIST);
       spawnSentinelAt(pos.x,pos.y, 1, 5.6, BASE_SENTINEL_HP);
@@ -780,14 +788,12 @@
   function resetStage(){
     state.map = genMaze(state.stage);
 
-    // player
     state.p.x = state.p.px = 1;
     state.p.y = state.p.py = 1;
     state.p.dir = {x:1,y:0};
     state.p.want = {x:1,y:0};
     state.p.invuln = 0;
 
-    // stage sentinels
     spawnStageSentinels();
 
     state.exitReady = false;
@@ -809,7 +815,6 @@
     state.multDecay = 0;
     state.gameOver = false;
     state.hitFlash = 0;
-
     resetStage();
     showToast('New Run');
   }
@@ -817,7 +822,7 @@
   resetStage();
 
   // ---------------------------
-  // Input (keyboard + gamepad + touch)
+  // Input
   // ---------------------------
   const input = {
     up:false, down:false, left:false, right:false,
@@ -825,9 +830,7 @@
   };
 
   function setWanted(dir){ state.p.want = dir; }
-
   function setWantedFromInput(){
-    // last-pressed wins
     if(input.left)  setWanted({x:-1,y:0});
     if(input.right) setWanted({x: 1,y:0});
     if(input.up)    setWanted({x: 0,y:-1});
@@ -844,7 +847,7 @@
   }
 
   bindPress(btnPower, ()=>{ input.power=true; }, ()=>{ input.power=false; });
-  bindPress(btnAttack,  ()=>{ input.attack=true; }, ()=>{ input.attack=false; });
+  bindPress(btnAttack, ()=>{ input.attack=true; }, ()=>{ input.attack=false; });
 
   window.addEventListener('keydown', (e)=>{
     if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','Shift','Escape'].includes(e.key)) e.preventDefault();
@@ -912,7 +915,7 @@
     input.right = (axX > dead) || !!dRight;
 
     input.power = !!gp.buttons[0]?.pressed;   // A
-    input.attack  = !!gp.buttons[1]?.pressed; // B
+    input.attack = !!gp.buttons[1]?.pressed;  // B
 
     if(gp.buttons[9]?.pressed){ openModal(); }
 
@@ -925,7 +928,6 @@
 
   let joyActive = false;
   let joyPid = -1;
-  let joyRect = null;
   let joyCx = 0, joyCy = 0;
   let joyRadius = 1;
 
@@ -940,14 +942,12 @@
     const mag = Math.hypot(dx,dy);
     const dead = joyRadius * 0.18;
 
-    // move knob visually (clamped)
     const cl = mag > joyRadius ? (joyRadius/mag) : 1;
     const kx = dx * cl;
     const ky = dy * cl;
     knob.style.left = `${50 + (kx/joyRadius)*34}%`;
     knob.style.top  = `${50 + (ky/joyRadius)*34}%`;
 
-    // set direction (4-way snap)
     input.up = input.down = input.left = input.right = false;
 
     if(mag < dead){
@@ -972,10 +972,10 @@
     joyPid = e.pointerId;
     joy.setPointerCapture(joyPid);
 
-    joyRect = joy.getBoundingClientRect();
-    joyCx = joyRect.left + joyRect.width/2;
-    joyCy = joyRect.top + joyRect.height/2;
-    joyRadius = joyRect.width * 0.34;
+    const r = joy.getBoundingClientRect();
+    joyCx = r.left + r.width/2;
+    joyCy = r.top + r.height/2;
+    joyRadius = r.width * 0.34;
 
     joyUpdateFromDelta(e.clientX - joyCx, e.clientY - joyCy);
   });
@@ -1009,43 +1009,55 @@
 
   function tryAttack(){
     if(state.attackCD>0) return;
-    if(state.fury < ATTACK_COST) {
-      state.attackCD = 0.12; // tiny lockout to avoid spam
+
+    if(state.fury < ATTACK_COST){
+      state.attackCD = 0.10;
       return;
     }
+
     state.fury = clamp(state.fury - ATTACK_COST, 0, MAX_FURY);
     state.attackCD = ATTACK_CD;
     state.attackFlash = 0.16;
 
-    // hit tile in front (sword)
     const p = state.p;
     const dir = (p.dir.x===0 && p.dir.y===0) ? p.want : p.dir;
     const tx = p.x + dir.x * ATTACK_RANGE;
     const ty = p.y + dir.y * ATTACK_RANGE;
 
+    let connected = false;
+
     for(const s of state.enemies){
       if(s.invuln>0) continue;
       if(s.x===tx && s.y===ty){
         s.hp -= 1;
-        showToast(`HIT (${s.hp}/${s.hpMax})`);
+        connected = true;
+
+        // KEY CHANGE: if we CONNECT, grant i-frames so you can run past safely.
+        p.invuln = Math.max(p.invuln, ATTACK_IFRAMES_ON_HIT);
+
         if(s.hp <= 0){
           killSentinel(s);
+          showToast('KILL → FULL HEAL (splits!)');
+        } else {
+          showToast(`SLASH! (${s.hp}/${s.hpMax})`);
         }
         break;
       }
     }
+
+    // If you miss, you DON'T get i-frames — so charging past is risky.
+    if(!connected){
+      showToast('MISS');
+    }
   }
 
   function killSentinel(s){
-    // full heal
     state.hp = MAX_HP;
     state.hitFlash = 0.25;
 
-    // remove from active list
     const idx = state.enemies.indexOf(s);
     if(idx>=0) state.enemies.splice(idx,1);
 
-    // schedule respawn + split into 2
     const p = state.p;
     const pos = findFarSpawn(p.x,p.y, MIN_RESPAWN_DIST);
 
@@ -1054,12 +1066,10 @@
     const childSpeed = Math.min(8.0, (s.speed || 5.6) * 1.05);
 
     state.respawns.push({ t: RESPAWN_DELAY, x: pos.x, y: pos.y, level: childLevel, hpMax: childHpMax, speed: childSpeed, count: 2 });
-
-    showToast('KILL → FULL HEAL (splits!)');
   }
 
   // ---------------------------
-  // Turning helpers (intent buffer + centering)
+  // Turning helpers
   // ---------------------------
   function isPerpendicular(a,b){
     return (a.x !== 0 && b.y !== 0) || (a.y !== 0 && b.x !== 0);
@@ -1088,7 +1098,6 @@
     const nearX = Math.abs(p.px - cx) <= TURN_EPS;
     const nearY = Math.abs(p.py - cy) <= TURN_EPS;
 
-    // if stopped
     if(p.dir.x===0 && p.dir.y===0){
       if(nearX && nearY && canMoveTo(cx + want.x, cy + want.y)){
         p.px = cx; p.py = cy; p.x = cx; p.y = cy;
@@ -1097,14 +1106,12 @@
       return;
     }
 
-    // perpendicular turn at intersection
     if(isPerpendicular(p.dir, want) && nearX && nearY && canMoveTo(cx + want.x, cy + want.y)){
       p.px = cx; p.py = cy; p.x = cx; p.y = cy;
       p.dir = {x: want.x, y: want.y};
       return;
     }
 
-    // allow reverse on center
     if((want.x === -p.dir.x && want.y === -p.dir.y) && nearX && nearY){
       if(canMoveTo(cx + want.x, cy + want.y)){
         p.px = cx; p.py = cy; p.x = cx; p.y = cy;
@@ -1114,20 +1121,22 @@
   }
 
   // ---------------------------
-  // Loop
+  // Modal controls
   // ---------------------------
-  canvas.addEventListener('pointerdown', ()=>{
-    if(state.gameOver){
-      resetRun();
-      requestAnimationFrame(()=>{ resize(); render(0); });
-    }
-  });
+  function openModal(){ modalBack.classList.add('show'); paused = true; requestAnimationFrame(resize); }
+  function closeModal(){
+    modalBack.classList.remove('show');
+    paused = false;
+    requestAnimationFrame(() => { resize(); last = performance.now(); render(0); });
+  }
 
+  // ---------------------------
+  // Enemy step
+  // ---------------------------
   function stepEnemy(s, dt){
     s.invuln = Math.max(0, s.invuln - dt);
     s.stepAge += dt;
 
-    // update cell lock
     if(atCellCenter(s.px,s.py)){
       const cx = Math.round(s.px);
       const cy = Math.round(s.py);
@@ -1135,7 +1144,6 @@
       s.px = cx; s.py = cy;
     }
 
-    // choose direction periodically or at cell center
     if(atCellCenter(s.px,s.py) || s.stepAge > 0.20){
       s.stepAge = 0;
 
@@ -1145,7 +1153,6 @@
       let dx = clamp(step.x - s.x, -1, 1);
       let dy = clamp(step.y - s.y, -1, 1);
 
-      // If BFS can't find a move (or returns same cell), pick a valid neighbor to avoid freezing.
       if((dx===0 && dy===0) || !canMoveTo(s.x+dx, s.y+dy)){
         const opts = [];
         if(canMoveTo(s.x+1,s.y)) opts.push({dx:1,dy:0});
@@ -1158,14 +1165,9 @@
         }
       }
 
-      // Track stuckness
-      if(dx===0 && dy===0){
-        s.stuckAge += dt;
-      } else {
-        s.stuckAge = 0;
-      }
+      if(dx===0 && dy===0) s.stuckAge += dt;
+      else s.stuckAge = 0;
 
-      // If "stuck" too long, force random move
       if(s.stuckAge > 0.5){
         const opts = [];
         if(canMoveTo(s.x+1,s.y)) opts.push({dx:1,dy:0});
@@ -1187,7 +1189,6 @@
       s.px += s.dx * spd * dt;
       s.py += s.dy * spd * dt;
 
-      // stop at walls (guard)
       const cx = Math.round(s.px);
       const cy = Math.round(s.py);
       if(!canMoveTo(cx,cy)){
@@ -1196,6 +1197,66 @@
       }
     }
   }
+
+  // ---------------------------
+  // Stage spawn
+  // ---------------------------
+  function spawnStageSentinels(){
+    state.enemies.length = 0;
+    state.respawns.length = 0;
+
+    const count = Math.min(MAX_SENTINELS, 1 + Math.floor(state.stage / 2));
+    const p = state.p;
+
+    for(let i=0;i<count;i++){
+      const pos = findFarSpawn(p.x,p.y, MIN_RESPAWN_DIST);
+      spawnSentinelAt(pos.x,pos.y, 1, 5.6, BASE_SENTINEL_HP);
+    }
+  }
+
+  function resetStage(){
+    state.map = genMaze(state.stage);
+
+    state.p.x = state.p.px = 1;
+    state.p.y = state.p.py = 1;
+    state.p.dir = {x:1,y:0};
+    state.p.want = {x:1,y:0};
+    state.p.invuln = 0;
+
+    spawnStageSentinels();
+
+    state.exitReady = false;
+    state.powerTimer = 0;
+    state.powerCooldown = 0;
+    state.attackCD = 0;
+    state.attackFlash = 0;
+
+    showToast(`Stage ${state.stage}`);
+  }
+
+  function resetRun(){
+    state.stage = 1;
+    state.score = 0;
+    state.hp = MAX_HP;
+    state.hunger = 0;
+    state.fury = 0;
+    state.multiplier = 1.0;
+    state.multDecay = 0;
+    state.gameOver = false;
+    state.hitFlash = 0;
+    resetStage();
+    showToast('New Run');
+  }
+
+  // ---------------------------
+  // Loop
+  // ---------------------------
+  canvas.addEventListener('pointerdown', ()=>{
+    if(state.gameOver){
+      resetRun();
+      requestAnimationFrame(()=>{ resize(); render(0); });
+    }
+  });
 
   function tick(now){
     const dt = Math.min(0.033, (now - last) / 1000);
@@ -1215,15 +1276,6 @@
     state.attackCD = Math.max(0, state.attackCD - dt);
     state.attackFlash = Math.max(0, state.attackFlash - dt);
     state.hitFlash = Math.max(0, state.hitFlash - dt*1.8);
-
-    // button state
-    btnPower.classList.toggle('active', state.powerTimer>0);
-    btnPower.classList.toggle('disabled', state.powerCooldown>0 && state.powerTimer<=0);
-    btnPower.classList.toggle('hot', state.powerCooldown<=0 && state.powerTimer<=0);
-
-    btnAttack.classList.toggle('active', state.attackFlash>0);
-    btnAttack.classList.toggle('disabled', state.attackCD>0);
-    btnAttack.classList.toggle('hot', state.fury >= ATTACK_COST && state.attackCD<=0);
 
     // actions
     if(input.power) tryPower();
@@ -1264,12 +1316,10 @@
       p.x = cx; p.y = cy;
       p.px = cx; p.py = cy;
 
-      // blocked ahead -> stop
       if(!canMoveTo(cx+p.dir.x, cy+p.dir.y)){
         p.dir = {x:0,y:0};
       }
 
-      // eat pellet
       const k = key(p.x,p.y);
       if(state.map.pellets.has(k)){
         state.map.pellets.delete(k);
@@ -1320,6 +1370,10 @@
     if(p.x===exit.x && p.y===exit.y && state.exitReady){
       state.stage++;
       state.score += Math.round(75 * state.multiplier);
+      // NOTE: fury carries (feels good). If you want reset per stage, tell me.
+      spawnStageSentinels();
+      state.map = genMaze(state.stage);
+      // re-seed stage fully with resetStage() to ensure player resets too
       resetStage();
       render(dt);
       return;
@@ -1330,7 +1384,7 @@
       stepEnemy(s, dt);
     }
 
-    // Collision
+    // Collision (IMPORTANT: i-frames from successful slash prevents pass-through damage)
     for(const s of state.enemies){
       if(p.invuln>0) break;
       const dist = Math.hypot((p.px - s.px), (p.py - s.py));
@@ -1344,32 +1398,29 @@
       }
     }
 
-    // Respawns (splitting)
+    // Respawns (split)
     for(let i=state.respawns.length-1; i>=0; i--){
       const r = state.respawns[i];
       r.t -= dt;
       if(r.t <= 0){
         state.respawns.splice(i,1);
-
-        // spawn two, slightly separated if possible
-        const ppos = findFarSpawn(p.x,p.y, MIN_RESPAWN_DIST);
-        spawnSentinelAt(ppos.x, ppos.y, r.level, r.speed, r.hpMax);
-
+        const ppos1 = findFarSpawn(p.x,p.y, MIN_RESPAWN_DIST);
+        spawnSentinelAt(ppos1.x, ppos1.y, r.level, r.speed, r.hpMax);
         const ppos2 = findFarSpawn(p.x,p.y, MIN_RESPAWN_DIST);
         spawnSentinelAt(ppos2.x, ppos2.y, r.level, r.speed, r.hpMax);
       }
     }
 
-    // Death
+    // death
     state.hp = clamp(state.hp, 0, MAX_HP);
     if(state.hp<=0){
       state.gameOver = true;
       showToast('SYSTEM FAILURE — Tap to restart');
     }
 
-    // UI
+    // UI update
     uiScore.textContent = String(state.score);
-    uiMult.textContent = `×${state.multiplier.toFixed(1)} (${movingInput ? 'rolling' : 'decay'})`;
+    uiMult.textContent = `×${state.multiplier.toFixed(1)} ${movingInput ? 'rolling' : 'decay'}`;
 
     uiHP.textContent = String(Math.round(state.hp));
     uiHunger.textContent = String(Math.round(state.hunger));
@@ -1383,9 +1434,36 @@
     uiHunFill.style.width = `${state.hunger}%`;
     uiFurFill.style.width = `${(state.fury/MAX_FURY)*100}%`;
 
+    // Weapon panel (future-proof; right now Sword Mk1)
+    uiWeaponName.textContent = 'SWORD';
+    uiWeaponInfo.textContent = `Mk1 • cost ${ATTACK_COST} • range ${ATTACK_RANGE}`;
+
+    const need = Math.max(0, ATTACK_COST - state.fury);
+    if(state.attackCD>0){
+      uiAtkReady.textContent = `ATTACK: cooling (${state.attackCD.toFixed(2)}s)`;
+    } else if(need>0){
+      uiAtkReady.textContent = `ATTACK: need ${need} Fury`;
+    } else {
+      uiAtkReady.textContent = `ATTACK: READY`;
+    }
+
     uiExitState.textContent = state.exitReady ? 'READY' : 'LOCKED';
     uiExitState.style.color = state.exitReady ? 'var(--good)' : 'var(--ink)';
     uiPelLeft.textContent = `pellets: ${pelletsLeft} (need ≤ ${threshold})`;
+
+    // Buttons
+    btnPower.classList.toggle('active', state.powerTimer>0);
+    btnPower.classList.toggle('disabled', state.powerCooldown>0 && state.powerTimer<=0);
+    btnPower.classList.toggle('hot', state.powerCooldown<=0 && state.powerTimer<=0);
+
+    btnAttack.classList.toggle('active', state.attackFlash>0);
+    btnAttack.classList.toggle('disabled', state.attackCD>0 || state.fury < ATTACK_COST);
+    btnAttack.classList.toggle('hot', state.attackCD<=0 && state.fury >= ATTACK_COST);
+
+    // Button label also indicates readiness (so even if stats row wraps, you still see it)
+    if(state.attackCD>0) btnAttack.textContent = 'ATTACK (CD)';
+    else if(state.fury < ATTACK_COST) btnAttack.textContent = `ATTACK (NEED ${need})`;
+    else btnAttack.textContent = 'ATTACK (READY)';
 
     render(dt);
   }
@@ -1468,7 +1546,6 @@
       ctx.fillStyle = 'rgba(255,90,122,0.83)';
       ctx.fill();
 
-      // tiny hp pip
       const frac = s.hpMax>0 ? (s.hp/s.hpMax) : 0;
       ctx.shadowBlur = 0;
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
@@ -1520,7 +1597,6 @@
       ctx.stroke();
     }
 
-    // paused / gameover overlays
     if(paused){
       ctx.shadowBlur = 0;
       ctx.fillStyle = 'rgba(0,0,0,0.62)';
