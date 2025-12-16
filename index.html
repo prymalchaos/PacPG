@@ -15,9 +15,8 @@
       --good:#7CFF9A;
       --gold:#ffd36e;
 
-      /* Layout tuning */
       --pad: 10px;
-      --uiH: 42svh;            /* safer on iOS than vh */
+      --uiH: 42svh;
       --uiMax: 430px;
       --uiMin: 230px;
     }
@@ -31,7 +30,6 @@
       height:100%;
     }
 
-    /* Use safe viewport where supported */
     body{
       height: 100svh;
       padding-top: env(safe-area-inset-top);
@@ -41,11 +39,7 @@
       box-sizing:border-box;
     }
 
-    #wrap{
-      height:100%;
-      display:flex;
-      flex-direction:column;
-    }
+    #wrap{height:100%; display:flex; flex-direction:column;}
 
     #gameArea{
       flex:1;
@@ -54,7 +48,7 @@
       justify-content:center;
       padding: var(--pad);
       box-sizing:border-box;
-      min-height: 0; /* important for flex children on iOS */
+      min-height:0;
     }
 
     canvas{
@@ -80,14 +74,13 @@
       grid-template-rows:auto 1fr;
       gap:10px;
 
-      overflow:hidden; /* stop tiny overflow clipping issues */
+      overflow:hidden;
     }
 
     #stats{
       grid-column:1 / span 2;
       display:grid;
       gap:8px;
-      /* Auto-fit prevents clipping on narrow phones */
       grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
     }
 
@@ -108,6 +101,7 @@
     .fill{height:100%; width:50%; background:var(--accent);}
     .fill.danger{background:var(--danger);}
     .fill.good{background:var(--good);}
+    .fill.gold{background:var(--gold);}
 
     #controlsLeft, #controlsRight{
       display:flex;
@@ -143,19 +137,6 @@
       pointer-events:none;
     }
 
-    /* D-pad */
-    .dpad{
-      width:min(38vw, 215px);
-      max-width: 215px;
-      aspect-ratio:1/1;
-      display:grid;
-      grid-template-columns:repeat(3,1fr);
-      grid-template-rows:repeat(3,1fr);
-      gap:8px;
-    }
-    .dpad .spacer{opacity:0; pointer-events:none;}
-
-    /* Action buttons */
     .actions{
       display:flex;
       flex-direction:column;
@@ -178,8 +159,63 @@
       transition:.18s ease;
       pointer-events:none;
       backdrop-filter: blur(6px);
+      z-index: 50;
     }
     #toast.show{opacity:1; transform:translateY(0);}
+
+    /* Virtual joystick */
+    #joyWrap{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      width:min(42vw, 240px);
+      max-width:240px;
+      min-width:0;
+    }
+    #joy{
+      position:relative;
+      width: min(40vw, 220px);
+      max-width:220px;
+      aspect-ratio:1/1;
+      border-radius:999px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.10);
+      box-shadow: inset 0 0 0 2px rgba(125,249,255,.05);
+      touch-action:none;
+      overflow:hidden;
+    }
+    #joyBase{
+      position:absolute;
+      inset:16%;
+      border-radius:999px;
+      border:1px dashed rgba(255,255,255,.16);
+      background:rgba(0,0,0,.10);
+    }
+    #joyKnob{
+      position:absolute;
+      width:34%;
+      height:34%;
+      left:50%;
+      top:50%;
+      transform: translate(-50%,-50%);
+      border-radius:999px;
+      background:rgba(125,249,255,.12);
+      border:1px solid rgba(125,249,255,.35);
+      box-shadow: 0 10px 30px rgba(0,0,0,.45);
+    }
+    #joyRow{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+    }
+    #menuBtn{
+      padding:10px 12px;
+      border-radius:12px;
+      font-weight:900;
+      letter-spacing:.05em;
+      min-width: 92px;
+    }
 
     /* Modal */
     #modalBack{
@@ -190,6 +226,7 @@
       justify-content:center;
       padding:14px;
       box-sizing:border-box;
+      z-index: 60;
     }
     #modalBack.show{display:flex;}
     #modal{
@@ -234,7 +271,7 @@
       cursor:pointer;
     }
 
-    /* Optional error overlay (only shows if something crashes) */
+    /* Error overlay (only if something crashes) */
     #errBox{
       position:absolute; left:12px; right:12px; bottom:calc(12px + env(safe-area-inset-bottom));
       background:rgba(0,0,0,.78);
@@ -278,6 +315,11 @@
         <div class="bar"><div id="hunFill" class="fill danger"></div></div>
       </div>
       <div class="card">
+        <div class="label">Fury</div>
+        <div id="fury" class="value">0</div>
+        <div class="bar"><div id="furFill" class="fill gold"></div></div>
+      </div>
+      <div class="card">
         <div class="label">Stage</div>
         <div id="stage" class="value">1</div>
         <div id="padHint" class="sub">Touch / Keys / Gamepad</div>
@@ -290,22 +332,16 @@
     </div>
 
     <div id="controlsLeft" class="card">
-      <div>
-        <div class="label">D-Pad</div>
-        <div class="dpad" id="dpad">
-          <div class="spacer"></div>
-          <div class="btn" data-dir="up">▲</div>
-          <div class="spacer"></div>
-
-          <div class="btn" data-dir="left">◀</div>
-          <div class="btn" data-dir="none">●</div>
-          <div class="btn" data-dir="right">▶</div>
-
-          <div class="spacer"></div>
-          <div class="btn" data-dir="down">▼</div>
-          <div class="spacer"></div>
+      <div id="joyWrap">
+        <div class="label">Thumbstick</div>
+        <div id="joy">
+          <div id="joyBase"></div>
+          <div id="joyKnob"></div>
         </div>
-        <div class="hint">Turn buffering: press early, turn at the next opening.</div>
+        <div id="joyRow">
+          <div class="hint" style="margin:0;">4-way snap. Press early to auto-turn.</div>
+          <div id="menuBtn" class="btn">MENU</div>
+        </div>
       </div>
     </div>
 
@@ -313,13 +349,13 @@
       <div class="actions">
         <div class="label">Actions</div>
         <div id="btnPower" class="btn bigBtn">POWER</div>
-        <div id="btnScan" class="btn bigBtn">SCAN</div>
+        <div id="btnAttack" class="btn bigBtn">ATTACK</div>
         <div class="hint">
           POWER: speed burst (cooldown)<br/>
-          SCAN: reveal pellets + sentinel briefly
+          ATTACK: spend Fury to strike (kill → full heal)
         </div>
         <div class="row hint">
-          <span>Menu:</span><span>Tap “●”</span>
+          <span>Gamepad:</span><span>A=POWER, B=ATTACK</span>
         </div>
       </div>
     </div>
@@ -337,19 +373,20 @@
       <div class="box">
         <div class="t">HOW TO PLAY</div>
         <ul>
-          <li>Eat <b>Glyphs</b> to score and reduce <b>Hunger</b>.</li>
+          <li>Eat <b>Glyphs</b> to score, reduce <b>Hunger</b>, gain <b>Fury</b>.</li>
           <li>Hunger rises constantly. At max, you take damage.</li>
           <li>Clear enough glyphs to unlock the <b>Exit</b>.</li>
-          <li>Avoid the <b>Sentinel</b>. Contact damages Integrity.</li>
+          <li><b>Sentinels</b> hunt you. Touch = damage.</li>
+          <li><b>ATTACK</b> costs Fury. Killing a Sentinel heals you to full — but it returns <b>far away</b> and <b>splits into two</b>.</li>
         </ul>
       </div>
 
       <div class="box">
         <div class="t">CONTROLS</div>
         <ul>
-          <li><b>Touch</b>: D-pad + POWER + SCAN</li>
-          <li><b>Keyboard</b>: Arrows + Space (POWER) + Shift (SCAN)</li>
-          <li><b>Controller</b>: Stick/D-pad + A (POWER) + B (SCAN)</li>
+          <li><b>Touch</b>: Thumbstick + POWER + ATTACK</li>
+          <li><b>Keyboard</b>: Arrows + Space (POWER) + Shift (ATTACK)</li>
+          <li><b>Controller</b>: Stick/D-pad + A (POWER) + B (ATTACK)</li>
         </ul>
         <div class="small" style="margin-top:10px;">
           Tip: press turns early—your intent stays buffered.
@@ -372,7 +409,7 @@
 <script>
 (() => {
   // ---------------------------
-  // Error overlay (only shows if something breaks)
+  // Error overlay
   // ---------------------------
   const errBox = document.getElementById('errBox');
   function showError(msg){
@@ -399,15 +436,13 @@
     canvas.height = Math.max(1, Math.floor(rect.height * dpr));
     ctx.setTransform(dpr,0,0,dpr,0,0);
   }
-
   window.addEventListener('resize', () => requestAnimationFrame(resize), { passive:true });
   window.addEventListener('orientationchange', () => setTimeout(resize, 90), { passive:true });
   document.addEventListener('visibilitychange', () => { if(!document.hidden) setTimeout(resize, 90); });
-
   resize();
 
   // ---------------------------
-  // UI elements
+  // UI
   // ---------------------------
   const uiScore = document.getElementById('score');
   const uiMult = document.getElementById('mult');
@@ -415,18 +450,21 @@
   const uiHPFill = document.getElementById('hpFill');
   const uiHunger = document.getElementById('hunger');
   const uiHunFill = document.getElementById('hunFill');
+  const uiFury = document.getElementById('fury');
+  const uiFurFill = document.getElementById('furFill');
   const uiStage = document.getElementById('stage');
   const uiPadHint = document.getElementById('padHint');
   const uiExitState = document.getElementById('exitState');
   const uiPelLeft = document.getElementById('pelLeft');
 
   const btnPower = document.getElementById('btnPower');
-  const btnScan  = document.getElementById('btnScan');
+  const btnAttack  = document.getElementById('btnAttack');
 
   const modalBack = document.getElementById('modalBack');
   const btnStart = document.getElementById('btnStart');
   const btnClose = document.getElementById('btnClose');
   const btnResetRun = document.getElementById('btnResetRun');
+  const menuBtn = document.getElementById('menuBtn');
 
   const toast = document.getElementById('toast');
   function showToast(msg){
@@ -447,7 +485,6 @@
     paused = true;
     requestAnimationFrame(resize);
   }
-
   function closeModal(){
     modalBack.classList.remove('show');
     paused = false;
@@ -457,33 +494,49 @@
       render(0);
     });
   }
-
   btnStart.addEventListener('click', ()=>{ closeModal(); requestAnimationFrame(resize); });
   btnClose.addEventListener('click', ()=>{ closeModal(); });
   btnResetRun.addEventListener('click', ()=>{ resetRun(); closeModal(); });
+  menuBtn.addEventListener('click', ()=> openModal());
 
-  const FIRST_KEY = 'maze_hunger_seen_rules_v2';
+  const FIRST_KEY = 'maze_hunger_seen_rules_v3';
   if(!localStorage.getItem(FIRST_KEY)){
     openModal();
     localStorage.setItem(FIRST_KEY, '1');
   }
 
   // ---------------------------
-  // Game constants
+  // Constants
   // ---------------------------
   const CELL = 22;
   const MAZE_W = 25;
   const MAZE_H = 19;
   const WALL = 1, FLOOR = 0;
 
-  // Turning feel knobs (this is the magic)
-  const TURN_EPS = 0.18;          // how close to cell-center to allow a turn (bigger = more forgiving)
-  const CENTER_PULL = 16.0;       // corridor auto-centering strength (higher = stronger)
+  // Turning feel
+  const TURN_EPS = 0.18;
+  const CENTER_PULL = 16.0;
+
+  // Progression
   const EXIT_THRESHOLD_BASE = 30;
   const EXIT_THRESHOLD_STAGE_DECAY = 1;
 
+  // Combat
+  const MAX_HP = 100;
+  const MAX_FURY = 100;
+  const FURY_PER_PELLET = 4;
+  const ATTACK_COST = 20;
+  const ATTACK_CD = 0.28;
+  const ATTACK_RANGE = 1; // cells ahead
+
+  // Enemies
+  const BASE_SENTINEL_HP = 5;
+  const RESPAWN_DELAY = 1.0; // seconds
+  const MIN_RESPAWN_DIST = 10;
+  const MAX_SENTINELS = 10;
+
   // ---------------------------
-  // RNG
+  // Helpers
   // ---------------------------
   function mulberry32(seed){
     return function(){
@@ -494,13 +547,15 @@
     };
   }
 
-  // ---------------------------
-  // Maze gen
-  // ---------------------------
   function key(x,y){ return (x<<16)|y; }
   function unkey(k){ return {x:(k>>>16)&0xffff, y:k&0xffff}; }
   function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
 
+  function manhattan(ax,ay,bx,by){ return Math.abs(ax-bx) + Math.abs(ay-by); }
+
+  // ---------------------------
+  // Maze gen
+  // ---------------------------
   function genMaze(stage) {
     const seed = (Date.now() ^ (stage*99991)) >>> 0;
     const rand = mulberry32(seed);
@@ -527,6 +582,7 @@
       stack.push({x:nx,y:ny});
     }
 
+    // Loops
     const loops = Math.min(55, 14 + stage*7);
     for(let i=0;i<loops;i++){
       const x = 1 + ((rand()*(w-2))|0);
@@ -537,6 +593,7 @@
       if(horiz || vert) grid[y][x]=FLOOR;
     }
 
+    // Pellets
     const pellets = new Set();
     for(let y=1;y<h-1;y++){
       for(let x=1;x<w-1;x++){
@@ -547,6 +604,7 @@
       }
     }
 
+    // Exit: far from start
     let exit = {x:w-2,y:h-2};
     let best = -1;
     for(let tries=0;tries<260;tries++){
@@ -561,40 +619,40 @@
   }
 
   // ---------------------------
-  // Game state
+  // State
   // ---------------------------
   const state = {
     stage: 1,
     score: 0,
-    hp: 100,
+    hp: MAX_HP,
     hunger: 0,
+    fury: 0,
     multiplier: 1.0,
     multDecay: 0,
 
-    scanTimer: 0,
     powerTimer: 0,
     powerCooldown: 0,
-    scanCooldown: 0,
+
+    attackCD: 0,
+    attackFlash: 0,
 
     hitFlash: 0,
     map: null,
     gameOver: false,
     exitReady: false,
 
+    rand: mulberry32((Date.now()>>>0) ^ 0xA5A5A5),
+
     p: {
       x:1,y:1, px:1,py:1,
       dir:{x:1,y:0},
-      want:{x:1,y:0},    // buffered forever until it becomes valid
+      want:{x:1,y:0},
       speed: 7.1,
-      invuln: 0,
+      invuln: 0
     },
 
-    e: {
-      x:MAZE_W-2,y:MAZE_H-2, px:MAZE_W-2,py:MAZE_H-2,
-      speed: 5.6,
-      stepAge: 0,
-      dx:0,dy:0
-    }
+    enemies: [],      // active sentinels
+    respawns: []      // pending respawns {t,x,y,level,speed,hpMax}
   };
 
   function isWall(x,y){
@@ -609,30 +667,48 @@
     return (Math.abs(px-cx) < 0.10 && Math.abs(py-cy) < 0.10);
   }
 
+  // BFS next step (queue index = no slow shift)
   function nextStepToward(sx,sy,tx,ty){
     const w = MAZE_W, h = MAZE_H;
-    const prev = new Int32Array(w*h).fill(-1);
-    const q = [];
     const start = sy*w+sx, goal = ty*w+tx;
-    q.push(start); prev[start]=start;
+    if(start===goal) return {x:sx,y:sy};
 
-    while(q.length){
-      const cur = q.shift();
+    const prev = new Int32Array(w*h);
+    prev.fill(-1);
+
+    const q = new Int32Array(w*h);
+    let qh=0, qt=0;
+    q[qt++] = start;
+    prev[start]=start;
+
+    while(qh<qt){
+      const cur = q[qh++];
       if(cur===goal) break;
+
       const cx = cur % w;
       const cy = (cur / w) | 0;
 
-      const n1 = cur+1;
-      if(cx+1<w && prev[n1]<0 && !isWall(cx+1,cy)){ prev[n1]=cur; q.push(n1); }
-      const n2 = cur-1;
-      if(cx-1>=0 && prev[n2]<0 && !isWall(cx-1,cy)){ prev[n2]=cur; q.push(n2); }
-      const n3 = cur+w;
-      if(cy+1<h && prev[n3]<0 && !isWall(cx,cy+1)){ prev[n3]=cur; q.push(n3); }
-      const n4 = cur-w;
-      if(cy-1>=0 && prev[n4]<0 && !isWall(cx,cy-1)){ prev[n4]=cur; q.push(n4); }
+      // 4-neigh
+      if(cx+1<w){
+        const n=cur+1;
+        if(prev[n]<0 && !isWall(cx+1,cy)){ prev[n]=cur; q[qt++]=n; }
+      }
+      if(cx-1>=0){
+        const n=cur-1;
+        if(prev[n]<0 && !isWall(cx-1,cy)){ prev[n]=cur; q[qt++]=n; }
+      }
+      if(cy+1<h){
+        const n=cur+w;
+        if(prev[n]<0 && !isWall(cx,cy+1)){ prev[n]=cur; q[qt++]=n; }
+      }
+      if(cy-1>=0){
+        const n=cur-w;
+        if(prev[n]<0 && !isWall(cx,cy-1)){ prev[n]=cur; q[qt++]=n; }
+      }
     }
 
-    if(prev[goal]<0) return {x:sx,y:sy};
+    if(prev[goal]<0) return {x:sx,y:sy}; // unreachable
+
     let cur = goal;
     let p = prev[cur];
     while(p !== start && p !== cur){
@@ -641,24 +717,84 @@
     return {x:cur%w, y:(cur/w)|0};
   }
 
+  function findFarSpawn(px,py, minDist){
+    const grid = state.map.grid;
+    const w = MAZE_W, h = MAZE_H;
+
+    // Try random samples first
+    for(let tries=0; tries<600; tries++){
+      const x = 1 + ((state.rand()*(w-2))|0);
+      const y = 1 + ((state.rand()*(h-2))|0);
+      if(grid[y][x]!==FLOOR) continue;
+      if(manhattan(x,y,px,py) < minDist) continue;
+
+      // avoid spawning on exit tile too (feels cheap)
+      if(x===state.map.exit.x && y===state.map.exit.y) continue;
+      return {x,y};
+    }
+
+    // Fallback: pick farthest floor tile
+    let best = null;
+    let bestD = -1;
+    for(let y=1;y<h-1;y++){
+      for(let x=1;x<w-1;x++){
+        if(grid[y][x]!==FLOOR) continue;
+        if(x===state.map.exit.x && y===state.map.exit.y) continue;
+        const d = manhattan(x,y,px,py);
+        if(d>bestD){ bestD=d; best={x,y}; }
+      }
+    }
+    return best || {x: w-2, y: h-2};
+  }
+
+  function spawnSentinelAt(x,y, level=1, speed=5.6, hpMax=BASE_SENTINEL_HP){
+    if(state.enemies.length >= MAX_SENTINELS) return;
+    const s = {
+      id: (Math.random().toString(36).slice(2) + Date.now().toString(36)),
+      x, y,
+      px:x, py:y,
+      dx:0, dy:0,
+      speed,
+      stepAge: 0,
+      stuckAge: 0,
+      invuln: 0.0, // spawn protection
+      level,
+      hpMax,
+      hp: hpMax
+    };
+    state.enemies.push(s);
+  }
+
+  function spawnStageSentinels(){
+    state.enemies.length = 0;
+    state.respawns.length = 0;
+
+    const count = Math.min(MAX_SENTINELS, 1 + Math.floor(state.stage / 2));
+    const p = state.p;
+    for(let i=0;i<count;i++){
+      const pos = findFarSpawn(p.x,p.y, MIN_RESPAWN_DIST);
+      spawnSentinelAt(pos.x,pos.y, 1, 5.6, BASE_SENTINEL_HP);
+    }
+  }
+
   function resetStage(){
     state.map = genMaze(state.stage);
 
+    // player
     state.p.x = state.p.px = 1;
     state.p.y = state.p.py = 1;
     state.p.dir = {x:1,y:0};
     state.p.want = {x:1,y:0};
+    state.p.invuln = 0;
 
-    state.e.x = state.e.px = state.map.exit.x;
-    state.e.y = state.e.py = state.map.exit.y;
-    state.e.dx = 0; state.e.dy = 0;
-    state.e.stepAge = 0;
+    // stage sentinels
+    spawnStageSentinels();
 
-    state.scanTimer = 0;
+    state.exitReady = false;
     state.powerTimer = 0;
     state.powerCooldown = 0;
-    state.scanCooldown = 0;
-    state.exitReady = false;
+    state.attackCD = 0;
+    state.attackFlash = 0;
 
     showToast(`Stage ${state.stage}`);
   }
@@ -666,12 +802,14 @@
   function resetRun(){
     state.stage = 1;
     state.score = 0;
-    state.hp = 100;
+    state.hp = MAX_HP;
     state.hunger = 0;
+    state.fury = 0;
     state.multiplier = 1.0;
     state.multDecay = 0;
     state.gameOver = false;
     state.hitFlash = 0;
+
     resetStage();
     showToast('New Run');
   }
@@ -679,39 +817,21 @@
   resetStage();
 
   // ---------------------------
-  // Input
+  // Input (keyboard + gamepad + touch)
   // ---------------------------
   const input = {
     up:false, down:false, left:false, right:false,
-    power:false, scan:false
+    power:false, attack:false
   };
 
-  function setWanted(dir){
-    state.p.want = dir; // buffered indefinitely
-  }
+  function setWanted(dir){ state.p.want = dir; }
 
   function setWantedFromInput(){
-    // last pressed wins (classic arcade feel)
+    // last-pressed wins
     if(input.left)  setWanted({x:-1,y:0});
     if(input.right) setWanted({x: 1,y:0});
     if(input.up)    setWanted({x: 0,y:-1});
     if(input.down)  setWanted({x: 0,y: 1});
-  }
-
-  const dpad = document.getElementById('dpad');
-  const dpadButtons = [...dpad.querySelectorAll('.btn[data-dir]')];
-
-  function activateDir(dir, on){
-    // allow holding a single direction on touch
-    input.up = input.down = input.left = input.right = false;
-    if(on){
-      if(dir==='up') input.up = true;
-      if(dir==='down') input.down = true;
-      if(dir==='left') input.left = true;
-      if(dir==='right') input.right = true;
-    }
-    dpadButtons.forEach(b => b.classList.toggle('active', on && b.dataset.dir===dir));
-    setWantedFromInput();
   }
 
   function bindPress(el, onDown, onUp){
@@ -723,17 +843,8 @@
     el.addEventListener('pointerleave', up);
   }
 
-  dpadButtons.forEach(btn=>{
-    const dir = btn.dataset.dir;
-    if(dir === 'none'){
-      bindPress(btn, ()=>openModal(), ()=>{});
-      return;
-    }
-    bindPress(btn, ()=>activateDir(dir,true), ()=>activateDir(dir,false));
-  });
-
   bindPress(btnPower, ()=>{ input.power=true; }, ()=>{ input.power=false; });
-  bindPress(btnScan,  ()=>{ input.scan=true;  }, ()=>{ input.scan=false;  });
+  bindPress(btnAttack,  ()=>{ input.attack=true; }, ()=>{ input.attack=false; });
 
   window.addEventListener('keydown', (e)=>{
     if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','Shift','Escape'].includes(e.key)) e.preventDefault();
@@ -745,7 +856,8 @@
     if(e.key==='ArrowLeft') input.left = true;
     if(e.key==='ArrowRight') input.right = true;
     if(e.key===' ') input.power = true;
-    if(e.key==='Shift') input.scan = true;
+    if(e.key==='Shift') input.attack = true;
+
     setWantedFromInput();
   }, {passive:false});
 
@@ -757,10 +869,12 @@
     if(e.key==='ArrowLeft') input.left = false;
     if(e.key==='ArrowRight') input.right = false;
     if(e.key===' ') input.power = false;
-    if(e.key==='Shift') input.scan = false;
+    if(e.key==='Shift') input.attack = false;
+
     setWantedFromInput();
   });
 
+  // Gamepad
   let lastPadConnected = false;
   window.addEventListener('gamepadconnected', ()=>{
     lastPadConnected = true;
@@ -797,13 +911,91 @@
     input.left = (axX < -dead) || !!dLeft;
     input.right = (axX > dead) || !!dRight;
 
-    input.power = !!gp.buttons[0]?.pressed;
-    input.scan  = !!gp.buttons[1]?.pressed;
+    input.power = !!gp.buttons[0]?.pressed;   // A
+    input.attack  = !!gp.buttons[1]?.pressed; // B
 
     if(gp.buttons[9]?.pressed){ openModal(); }
 
     if(!paused) setWantedFromInput();
   }
+
+  // Virtual joystick (4-way snap)
+  const joy = document.getElementById('joy');
+  const knob = document.getElementById('joyKnob');
+
+  let joyActive = false;
+  let joyPid = -1;
+  let joyRect = null;
+  let joyCx = 0, joyCy = 0;
+  let joyRadius = 1;
+
+  function joyReset(){
+    knob.style.left = '50%';
+    knob.style.top = '50%';
+    input.up = input.down = input.left = input.right = false;
+    setWantedFromInput();
+  }
+
+  function joyUpdateFromDelta(dx,dy){
+    const mag = Math.hypot(dx,dy);
+    const dead = joyRadius * 0.18;
+
+    // move knob visually (clamped)
+    const cl = mag > joyRadius ? (joyRadius/mag) : 1;
+    const kx = dx * cl;
+    const ky = dy * cl;
+    knob.style.left = `${50 + (kx/joyRadius)*34}%`;
+    knob.style.top  = `${50 + (ky/joyRadius)*34}%`;
+
+    // set direction (4-way snap)
+    input.up = input.down = input.left = input.right = false;
+
+    if(mag < dead){
+      setWantedFromInput();
+      return;
+    }
+
+    if(Math.abs(dx) > Math.abs(dy)){
+      if(dx > 0) input.right = true;
+      else input.left = true;
+    } else {
+      if(dy > 0) input.down = true;
+      else input.up = true;
+    }
+    setWantedFromInput();
+  }
+
+  joy.addEventListener('pointerdown', (e)=>{
+    e.preventDefault();
+    if(paused) return;
+    joyActive = true;
+    joyPid = e.pointerId;
+    joy.setPointerCapture(joyPid);
+
+    joyRect = joy.getBoundingClientRect();
+    joyCx = joyRect.left + joyRect.width/2;
+    joyCy = joyRect.top + joyRect.height/2;
+    joyRadius = joyRect.width * 0.34;
+
+    joyUpdateFromDelta(e.clientX - joyCx, e.clientY - joyCy);
+  });
+
+  joy.addEventListener('pointermove', (e)=>{
+    if(!joyActive || e.pointerId !== joyPid) return;
+    e.preventDefault();
+    joyUpdateFromDelta(e.clientX - joyCx, e.clientY - joyCy);
+  });
+
+  function joyEnd(e){
+    if(e && e.pointerId !== joyPid) return;
+    joyActive = false;
+    joyPid = -1;
+    joyReset();
+  }
+
+  joy.addEventListener('pointerup', joyEnd);
+  joy.addEventListener('pointercancel', joyEnd);
+  joy.addEventListener('pointerleave', joyEnd);
 
   // ---------------------------
   // Actions
@@ -814,21 +1006,78 @@
     state.powerCooldown = 2.2;
     showToast('POWER');
   }
-  function tryScan(){
-    if(state.scanCooldown>0 || state.scanTimer>0) return;
-    state.scanTimer = 1.15;
-    state.scanCooldown = 3.0;
-    showToast('SCAN');
+
+  function tryAttack(){
+    if(state.attackCD>0) return;
+    if(state.fury < ATTACK_COST) {
+      state.attackCD = 0.12; // tiny lockout to avoid spam
+      return;
+    }
+    state.fury = clamp(state.fury - ATTACK_COST, 0, MAX_FURY);
+    state.attackCD = ATTACK_CD;
+    state.attackFlash = 0.16;
+
+    // hit tile in front (sword)
+    const p = state.p;
+    const dir = (p.dir.x===0 && p.dir.y===0) ? p.want : p.dir;
+    const tx = p.x + dir.x * ATTACK_RANGE;
+    const ty = p.y + dir.y * ATTACK_RANGE;
+
+    for(const s of state.enemies){
+      if(s.invuln>0) continue;
+      if(s.x===tx && s.y===ty){
+        s.hp -= 1;
+        showToast(`HIT (${s.hp}/${s.hpMax})`);
+        if(s.hp <= 0){
+          killSentinel(s);
+        }
+        break;
+      }
+    }
+  }
+
+  function killSentinel(s){
+    // full heal
+    state.hp = MAX_HP;
+    state.hitFlash = 0.25;
+
+    // remove from active list
+    const idx = state.enemies.indexOf(s);
+    if(idx>=0) state.enemies.splice(idx,1);
+
+    // schedule respawn + split into 2
+    const p = state.p;
+    const pos = findFarSpawn(p.x,p.y, MIN_RESPAWN_DIST);
+
+    const childLevel = (s.level || 1) + 1;
+    const childHpMax = Math.max(2, Math.floor((s.hpMax || BASE_SENTINEL_HP) * 0.7));
+    const childSpeed = Math.min(8.0, (s.speed || 5.6) * 1.05);
+
+    state.respawns.push({ t: RESPAWN_DELAY, x: pos.x, y: pos.y, level: childLevel, hpMax: childHpMax, speed: childSpeed, count: 2 });
+
+    showToast('KILL → FULL HEAL (splits!)');
   }
 
   // ---------------------------
-  // Turning helpers (THE FIX)
+  // Turning helpers (intent buffer + centering)
   // ---------------------------
   function isPerpendicular(a,b){
     return (a.x !== 0 && b.y !== 0) || (a.y !== 0 && b.x !== 0);
   }
 
-  // Try to apply buffered turn if we're close enough to a cell-center where it's legal.
+  function applyAutoCenter(p, dt){
+    const cx = Math.round(p.px);
+    const cy = Math.round(p.py);
+
+    if(p.dir.x !== 0){
+      const dy = (cy - p.py);
+      p.py += dy * (1 - Math.exp(-CENTER_PULL * dt));
+    } else if(p.dir.y !== 0){
+      const dx = (cx - p.px);
+      p.px += dx * (1 - Math.exp(-CENTER_PULL * dt));
+    }
+  }
+
   function tryApplyBufferedTurn(p){
     const want = p.want;
     if(!want || (want.x===0 && want.y===0)) return;
@@ -839,60 +1088,28 @@
     const nearX = Math.abs(p.px - cx) <= TURN_EPS;
     const nearY = Math.abs(p.py - cy) <= TURN_EPS;
 
-    // if stopped, any direction can start immediately from center-ish
+    // if stopped
     if(p.dir.x===0 && p.dir.y===0){
       if(nearX && nearY && canMoveTo(cx + want.x, cy + want.y)){
-        p.px = cx; p.py = cy;
-        p.x = cx;  p.y = cy;
+        p.px = cx; p.py = cy; p.x = cx; p.y = cy;
         p.dir = {x: want.x, y: want.y};
       }
       return;
     }
 
-    // If moving horizontally, allow vertical turn when we're centered vertically (nearY),
-    // and at/near an intersection center (nearX) (for crisp turns).
-    if(p.dir.x !== 0 && isPerpendicular(p.dir, want)){
-      if(nearY && nearX && canMoveTo(cx + want.x, cy + want.y)){
-        p.px = cx; p.py = cy;
-        p.x = cx;  p.y = cy;
-        p.dir = {x: want.x, y: want.y};
-      }
+    // perpendicular turn at intersection
+    if(isPerpendicular(p.dir, want) && nearX && nearY && canMoveTo(cx + want.x, cy + want.y)){
+      p.px = cx; p.py = cy; p.x = cx; p.y = cy;
+      p.dir = {x: want.x, y: want.y};
       return;
     }
 
-    // If moving vertically, allow horizontal turn when we're centered horizontally.
-    if(p.dir.y !== 0 && isPerpendicular(p.dir, want)){
-      if(nearX && nearY && canMoveTo(cx + want.x, cy + want.y)){
-        p.px = cx; p.py = cy;
-        p.x = cx;  p.y = cy;
-        p.dir = {x: want.x, y: want.y};
-      }
-      return;
-    }
-
-    // If player presses reverse direction, allow immediate reversal if legal (nice feel).
+    // allow reverse on center
     if((want.x === -p.dir.x && want.y === -p.dir.y) && nearX && nearY){
       if(canMoveTo(cx + want.x, cy + want.y)){
-        p.px = cx; p.py = cy;
-        p.x = cx;  p.y = cy;
+        p.px = cx; p.py = cy; p.x = cx; p.y = cy;
         p.dir = {x: want.x, y: want.y};
       }
-    }
-  }
-
-  // Corridor auto-centering: gently pulls you onto the gridline so turns don't “miss”.
-  function applyAutoCenter(p, dt){
-    const cx = Math.round(p.px);
-    const cy = Math.round(p.py);
-
-    if(p.dir.x !== 0){
-      // moving horizontally: pull Y toward center
-      const dy = (cy - p.py);
-      p.py += dy * (1 - Math.exp(-CENTER_PULL * dt));
-    } else if(p.dir.y !== 0){
-      // moving vertically: pull X toward center
-      const dx = (cx - p.px);
-      p.px += dx * (1 - Math.exp(-CENTER_PULL * dt));
     }
   }
 
@@ -905,6 +1122,80 @@
       requestAnimationFrame(()=>{ resize(); render(0); });
     }
   });
+
+  function stepEnemy(s, dt){
+    s.invuln = Math.max(0, s.invuln - dt);
+    s.stepAge += dt;
+
+    // update cell lock
+    if(atCellCenter(s.px,s.py)){
+      const cx = Math.round(s.px);
+      const cy = Math.round(s.py);
+      s.x = cx; s.y = cy;
+      s.px = cx; s.py = cy;
+    }
+
+    // choose direction periodically or at cell center
+    if(atCellCenter(s.px,s.py) || s.stepAge > 0.20){
+      s.stepAge = 0;
+
+      const p = state.p;
+      const step = nextStepToward(s.x,s.y, p.x,p.y);
+
+      let dx = clamp(step.x - s.x, -1, 1);
+      let dy = clamp(step.y - s.y, -1, 1);
+
+      // If BFS can't find a move (or returns same cell), pick a valid neighbor to avoid freezing.
+      if((dx===0 && dy===0) || !canMoveTo(s.x+dx, s.y+dy)){
+        const opts = [];
+        if(canMoveTo(s.x+1,s.y)) opts.push({dx:1,dy:0});
+        if(canMoveTo(s.x-1,s.y)) opts.push({dx:-1,dy:0});
+        if(canMoveTo(s.x,s.y+1)) opts.push({dx:0,dy:1});
+        if(canMoveTo(s.x,s.y-1)) opts.push({dx:0,dy:-1});
+        if(opts.length){
+          const pick = opts[(state.rand()*opts.length)|0];
+          dx = pick.dx; dy = pick.dy;
+        }
+      }
+
+      // Track stuckness
+      if(dx===0 && dy===0){
+        s.stuckAge += dt;
+      } else {
+        s.stuckAge = 0;
+      }
+
+      // If "stuck" too long, force random move
+      if(s.stuckAge > 0.5){
+        const opts = [];
+        if(canMoveTo(s.x+1,s.y)) opts.push({dx:1,dy:0});
+        if(canMoveTo(s.x-1,s.y)) opts.push({dx:-1,dy:0});
+        if(canMoveTo(s.x,s.y+1)) opts.push({dx:0,dy:1});
+        if(canMoveTo(s.x,s.y-1)) opts.push({dx:0,dy:-1});
+        if(opts.length){
+          const pick = opts[(state.rand()*opts.length)|0];
+          dx = pick.dx; dy = pick.dy;
+          s.stuckAge = 0;
+        }
+      }
+
+      s.dx = dx; s.dy = dy;
+    }
+
+    const spd = s.speed;
+    if(s.dx || s.dy){
+      s.px += s.dx * spd * dt;
+      s.py += s.dy * spd * dt;
+
+      // stop at walls (guard)
+      const cx = Math.round(s.px);
+      const cy = Math.round(s.py);
+      if(!canMoveTo(cx,cy)){
+        s.px = s.x; s.py = s.y;
+        s.dx = 0; s.dy = 0;
+      }
+    }
+  }
 
   function tick(now){
     const dt = Math.min(0.033, (now - last) / 1000);
@@ -919,21 +1210,24 @@
 
     // timers
     state.p.invuln = Math.max(0, state.p.invuln - dt);
-    state.scanTimer = Math.max(0, state.scanTimer - dt);
     state.powerTimer = Math.max(0, state.powerTimer - dt);
     state.powerCooldown = Math.max(0, state.powerCooldown - dt);
-    state.scanCooldown = Math.max(0, state.scanCooldown - dt);
+    state.attackCD = Math.max(0, state.attackCD - dt);
+    state.attackFlash = Math.max(0, state.attackFlash - dt);
     state.hitFlash = Math.max(0, state.hitFlash - dt*1.8);
 
-    if(input.power) tryPower();
-    if(input.scan) tryScan();
-
+    // button state
     btnPower.classList.toggle('active', state.powerTimer>0);
     btnPower.classList.toggle('disabled', state.powerCooldown>0 && state.powerTimer<=0);
-    btnScan.classList.toggle('active', state.scanTimer>0);
-    btnScan.classList.toggle('disabled', state.scanCooldown>0 && state.scanTimer<=0);
     btnPower.classList.toggle('hot', state.powerCooldown<=0 && state.powerTimer<=0);
-    btnScan.classList.toggle('hot', state.scanCooldown<=0 && state.scanTimer<=0);
+
+    btnAttack.classList.toggle('active', state.attackFlash>0);
+    btnAttack.classList.toggle('disabled', state.attackCD>0);
+    btnAttack.classList.toggle('hot', state.fury >= ATTACK_COST && state.attackCD<=0);
+
+    // actions
+    if(input.power) tryPower();
+    if(input.attack) tryAttack();
 
     // hunger + multiplier
     const movingInput = (input.up||input.down||input.left||input.right) || (state.p.dir.x!==0||state.p.dir.y!==0);
@@ -958,33 +1252,31 @@
       }
     }
 
-    // PLAYER MOVEMENT (with buffered turns + centering)
+    // PLAYER
     const p = state.p;
 
-    // Apply auto-centering continuously for “sticky” corridors
     applyAutoCenter(p, dt);
-
-    // Try buffered turn EVERY FRAME so you can press early
     tryApplyBufferedTurn(p);
 
-    // Update cell lock + pellet eating when near center
     if(atCellCenter(p.px, p.py)){
       const cx = Math.round(p.px);
       const cy = Math.round(p.py);
       p.x = cx; p.y = cy;
       p.px = cx; p.py = cy;
 
-      // If we're blocked ahead, stop (but keep buffered intent)
+      // blocked ahead -> stop
       if(!canMoveTo(cx+p.dir.x, cy+p.dir.y)){
         p.dir = {x:0,y:0};
       }
 
+      // eat pellet
       const k = key(p.x,p.y);
       if(state.map.pellets.has(k)){
         state.map.pellets.delete(k);
         state.score += Math.round(10 * state.multiplier);
         state.hunger = clamp(state.hunger - 14, 0, 100);
-        if(state.hunger > 70) state.hp = clamp(state.hp + 0.6, 0, 100);
+        state.fury = clamp(state.fury + FURY_PER_PELLET, 0, MAX_FURY);
+        if(state.hunger > 70) state.hp = clamp(state.hp + 0.6, 0, MAX_HP);
       }
     }
 
@@ -1019,49 +1311,57 @@
       }
     }
 
-    // Exit condition
+    // Exit
     const pelletsLeft = state.map.pellets.size;
     const threshold = Math.max(0, EXIT_THRESHOLD_BASE - (state.stage*EXIT_THRESHOLD_STAGE_DECAY));
     state.exitReady = pelletsLeft <= threshold;
 
     const exit = state.map.exit;
-    const onExit = (p.x===exit.x && p.y===exit.y);
-    if(onExit && state.exitReady){
+    if(p.x===exit.x && p.y===exit.y && state.exitReady){
       state.stage++;
       state.score += Math.round(75 * state.multiplier);
       resetStage();
+      render(dt);
+      return;
     }
 
-    // ENEMY
-    const e = state.e;
-    const eSpeed = e.speed * (state.scanTimer>0 ? 0.88 : 1.0);
-
-    e.stepAge += dt;
-    if(atCellCenter(e.px,e.py) || e.stepAge > 0.26){
-      e.stepAge = 0;
-      e.x = Math.round(e.px); e.y = Math.round(e.py);
-      e.px = e.x; e.py = e.y;
-
-      const step = nextStepToward(e.x,e.y, p.x,p.y);
-      e.dx = clamp(step.x - e.x, -1, 1);
-      e.dy = clamp(step.y - e.y, -1, 1);
+    // ENEMIES
+    for(const s of state.enemies){
+      stepEnemy(s, dt);
     }
 
-    if(e.dx || e.dy){
-      e.px += e.dx * eSpeed * dt;
-      e.py += e.dy * eSpeed * dt;
+    // Collision
+    for(const s of state.enemies){
+      if(p.invuln>0) break;
+      const dist = Math.hypot((p.px - s.px), (p.py - s.py));
+      if(dist < 0.40){
+        state.hp -= 19;
+        p.invuln = 0.85;
+        state.multiplier = 1.0;
+        state.hitFlash = 1.0;
+        showToast('HIT!');
+        break;
+      }
     }
 
-    const dist = Math.hypot((p.px - e.px), (p.py - e.py));
-    if(dist < 0.40 && p.invuln<=0){
-      state.hp -= 19;
-      state.p.invuln = 0.85;
-      state.multiplier = 1.0;
-      state.hitFlash = 1.0;
-      showToast('HIT!');
+    // Respawns (splitting)
+    for(let i=state.respawns.length-1; i>=0; i--){
+      const r = state.respawns[i];
+      r.t -= dt;
+      if(r.t <= 0){
+        state.respawns.splice(i,1);
+
+        // spawn two, slightly separated if possible
+        const ppos = findFarSpawn(p.x,p.y, MIN_RESPAWN_DIST);
+        spawnSentinelAt(ppos.x, ppos.y, r.level, r.speed, r.hpMax);
+
+        const ppos2 = findFarSpawn(p.x,p.y, MIN_RESPAWN_DIST);
+        spawnSentinelAt(ppos2.x, ppos2.y, r.level, r.speed, r.hpMax);
+      }
     }
 
-    state.hp = clamp(state.hp, 0, 100);
+    // Death
+    state.hp = clamp(state.hp, 0, MAX_HP);
     if(state.hp<=0){
       state.gameOver = true;
       showToast('SYSTEM FAILURE — Tap to restart');
@@ -1073,6 +1373,7 @@
 
     uiHP.textContent = String(Math.round(state.hp));
     uiHunger.textContent = String(Math.round(state.hunger));
+    uiFury.textContent = String(Math.round(state.fury));
     uiStage.textContent = String(state.stage);
 
     uiHPFill.style.width = `${state.hp}%`;
@@ -1080,6 +1381,7 @@
     uiHPFill.classList.toggle('good', state.hp>=35);
 
     uiHunFill.style.width = `${state.hunger}%`;
+    uiFurFill.style.width = `${(state.fury/MAX_FURY)*100}%`;
 
     uiExitState.textContent = state.exitReady ? 'READY' : 'LOCKED';
     uiExitState.style.color = state.exitReady ? 'var(--good)' : 'var(--ink)';
@@ -1115,11 +1417,9 @@
     ctx.translate(ox, oy);
     ctx.scale(scale, scale);
 
-    const scan = state.scanTimer>0;
-
+    // tiles
     ctx.shadowBlur = 10;
     ctx.shadowColor = 'rgba(125,249,255,0.35)';
-
     for(let y=0; y<MAZE_H; y++){
       for(let x=0; x<MAZE_W; x++){
         if(state.map.grid[y][x]===WALL){
@@ -1132,18 +1432,20 @@
       }
     }
 
-    ctx.shadowBlur = scan ? 14 : 8;
-    ctx.shadowColor = scan ? 'rgba(125,249,255,0.55)' : 'rgba(232,233,255,0.25)';
+    // pellets
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = 'rgba(232,233,255,0.25)';
     for(const k of state.map.pellets){
       const {x,y} = unkey(k);
       const cx = x*CELL + CELL*0.5;
       const cy = y*CELL + CELL*0.5;
       ctx.beginPath();
-      ctx.arc(cx, cy, scan ? 4.6 : 3.2, 0, Math.PI*2);
-      ctx.fillStyle = scan ? 'rgba(125,249,255,0.95)' : 'rgba(232,233,255,0.70)';
+      ctx.arc(cx, cy, 3.2, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(232,233,255,0.70)';
       ctx.fill();
     }
 
+    // exit
     const ex = state.map.exit.x*CELL;
     const ey = state.map.exit.y*CELL;
     ctx.shadowBlur = 16;
@@ -1154,21 +1456,34 @@
     ctx.lineWidth = 2;
     ctx.strokeRect(ex+4, ey+4, CELL-8, CELL-8);
 
-    const e = state.e;
-    const ecx = e.px*CELL + CELL*0.5;
-    const ecy = e.py*CELL + CELL*0.5;
-    ctx.shadowBlur = scan ? 18 : 14;
-    ctx.shadowColor = 'rgba(255,90,122,0.55)';
-    ctx.beginPath();
-    ctx.arc(ecx, ecy, CELL*0.34, 0, Math.PI*2);
-    ctx.fillStyle = scan ? 'rgba(255,90,122,0.95)' : 'rgba(255,90,122,0.83)';
-    ctx.fill();
+    // enemies
+    for(const s of state.enemies){
+      const ecx = s.px*CELL + CELL*0.5;
+      const ecy = s.py*CELL + CELL*0.5;
 
+      ctx.shadowBlur = 14;
+      ctx.shadowColor = 'rgba(255,90,122,0.55)';
+      ctx.beginPath();
+      ctx.arc(ecx, ecy, CELL*0.34, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(255,90,122,0.83)';
+      ctx.fill();
+
+      // tiny hp pip
+      const frac = s.hpMax>0 ? (s.hp/s.hpMax) : 0;
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(ecx - CELL*0.36, ecy - CELL*0.55, CELL*0.72, 4);
+      ctx.fillStyle = 'rgba(255,211,110,0.85)';
+      ctx.fillRect(ecx - CELL*0.36, ecy - CELL*0.55, CELL*0.72*frac, 4);
+    }
+
+    // player
     const p = state.p;
     const pcx = p.px*CELL + CELL*0.5;
     const pcy = p.py*CELL + CELL*0.5;
     const mouth = 0.55 + 0.25*Math.sin(performance.now()/85);
     const ang = Math.atan2(p.dir.y, p.dir.x);
+
     ctx.shadowBlur = 16;
     ctx.shadowColor = (p.invuln>0) ? 'rgba(125,249,255,0.6)' : 'rgba(232,233,255,0.35)';
     ctx.beginPath();
@@ -1178,6 +1493,7 @@
     ctx.fillStyle = (p.invuln>0) ? 'rgba(125,249,255,0.95)' : 'rgba(232,233,255,0.90)';
     ctx.fill();
 
+    // power ring
     if(state.powerTimer>0){
       ctx.shadowBlur = 22;
       ctx.shadowColor = 'rgba(125,249,255,0.6)';
@@ -1188,6 +1504,23 @@
       ctx.stroke();
     }
 
+    // attack slash
+    if(state.attackFlash>0){
+      const dir = (p.dir.x===0 && p.dir.y===0) ? p.want : p.dir;
+      const tx = (p.x + dir.x)*CELL + CELL*0.5;
+      const ty = (p.y + dir.y)*CELL + CELL*0.5;
+
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = 'rgba(255,211,110,0.65)';
+      ctx.strokeStyle = 'rgba(255,211,110,0.85)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(pcx, pcy);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+    }
+
+    // paused / gameover overlays
     if(paused){
       ctx.shadowBlur = 0;
       ctx.fillStyle = 'rgba(0,0,0,0.62)';
@@ -1217,7 +1550,7 @@
     ctx.restore();
   }
 
-  // Safe loop (won’t silently die)
+  // Safe loop
   function loop(now){
     try{
       tick(now);
