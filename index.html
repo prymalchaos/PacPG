@@ -17,9 +17,9 @@
 
       --pad: 10px;
 
-      /* Tighten bottom UI so it always fits on mobile */
+      /* mobile-safe bottom UI sizing */
       --uiTarget: 36svh;
-      --uiMin: 196px;
+      --uiMin: 168px;
       --uiMax: 400px;
     }
 
@@ -32,9 +32,8 @@
       height:100%;
     }
 
-    /* dvh fixes iOS address-bar lies */
     body{
-      height: 100dvh;
+      height: 100dvh; /* iOS address bar-safe */
       padding-top: env(safe-area-inset-top);
       padding-bottom: env(safe-area-inset-bottom);
       padding-left: env(safe-area-inset-left);
@@ -89,6 +88,10 @@
       display:grid;
       gap:8px;
       grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+
+      /* KEY FIX: reserve space for controls */
+      max-height: 46%;
+      overflow:hidden;
     }
 
     .card{
@@ -110,6 +113,10 @@
     .fill.good{background:var(--good);}
     .fill.gold{background:var(--gold);}
 
+    #controlsLeft, #controlsRight{
+      min-height:0; /* KEY FIX: allow shrink so it stays visible */
+    }
+
     .btn{
       display:flex; align-items:center; justify-content:center;
       background:rgba(255,255,255,.05);
@@ -126,15 +133,15 @@
       border-color:rgba(125,249,255,.35);
       box-shadow: 0 0 0 2px rgba(125,249,255,.12) inset;
     }
-    .btn.hot{
-      background:rgba(255,211,110,.10);
-      border-color:rgba(255,211,110,.30);
-      box-shadow: 0 0 0 2px rgba(255,211,110,.10) inset;
-    }
     .btn.disabled{
       opacity:.35;
       filter:saturate(.55);
       pointer-events:none;
+    }
+    .btn.attack-ready{
+      background: rgba(255,211,110,.18);
+      border-color: rgba(255,211,110,.55);
+      box-shadow: 0 0 18px rgba(255,211,110,.45);
     }
 
     .actions{
@@ -164,7 +171,7 @@
     }
     #toast.show{opacity:1; transform:translateY(0);}
 
-    /* Virtual joystick — reduced max size so it fits vertically */
+    /* Virtual joystick */
     #joyWrap{
       display:flex;
       flex-direction:column;
@@ -359,7 +366,7 @@
         <div id="btnAttack" class="btn bigBtn">ATTACK</div>
         <div class="hint">
           POWER: speed burst<br/>
-          ATTACK: timing slash (hit → i-frames)
+          ATTACK: weapon action (hit → advantage)
         </div>
         <div class="row hint">
           <span>Gamepad:</span><span>A=POWER, B=ATTACK</span>
@@ -383,9 +390,9 @@
           <li>Eat <b>Glyphs</b> to score, reduce <b>Hunger</b>, gain <b>Fury</b>.</li>
           <li>Hunger rises constantly. At max, you take damage.</li>
           <li>Clear enough glyphs to unlock the <b>Exit</b>.</li>
-          <li><b>Sentinels</b> hunt you. Touch = damage.</li>
-          <li><b>ATTACK</b> costs Fury. If you <b>hit</b>, you get brief <b>i-frames</b> to run past. If you <b>miss</b>, you can take damage.</li>
-          <li>Killing a Sentinel heals you to full — it returns far away and splits into two.</li>
+          <li><b>Sentinels</b> hunt you. Watch for <b>telegraphs</b> (they flash, then dash).</li>
+          <li><b>Weapon progression</b>: Sword → Blaster → Flamethrower (as stages rise).</li>
+          <li><b>ATTACK</b> costs Fury. Killing a Sentinel heals you to full — it returns far away and splits into two.</li>
         </ul>
       </div>
 
@@ -397,7 +404,7 @@
           <li><b>Controller</b>: Stick/D-pad + A (POWER) + B (ATTACK)</li>
         </ul>
         <div class="small" style="margin-top:10px;">
-          Tip: press turns early—your intent stays buffered.
+          Tip: weapon-ready glows gold.
         </div>
       </div>
     </div>
@@ -511,7 +518,7 @@
   btnResetRun.addEventListener('click', ()=>{ resetRun(); closeModal(); });
   menuBtn.addEventListener('click', ()=> openModal());
 
-  const FIRST_KEY = 'maze_hunger_seen_rules_v4';
+  const FIRST_KEY = 'maze_hunger_seen_rules_v5';
   if(!localStorage.getItem(FIRST_KEY)){
     openModal();
     localStorage.setItem(FIRST_KEY, '1');
@@ -533,21 +540,75 @@
   const EXIT_THRESHOLD_BASE = 30;
   const EXIT_THRESHOLD_STAGE_DECAY = 1;
 
-  // Combat (Sword Mk1)
+  // Core meters
   const MAX_HP = 100;
   const MAX_FURY = 100;
   const FURY_PER_PELLET = 4;
 
-  const ATTACK_COST = 20;
-  const ATTACK_CD = 0.28;
-  const ATTACK_RANGE = 1;       // cell in front
-  const ATTACK_IFRAMES_ON_HIT = 0.55; // THIS is the “run past safely” window
+  // Weapon progression unlock stages
+  const UNLOCK_BLASTER_STAGE = 3;
+  const UNLOCK_FLAME_STAGE   = 6;
 
-  // Enemies
+  // Enemy split/respawn
   const BASE_SENTINEL_HP = 5;
   const RESPAWN_DELAY = 1.0;
   const MIN_RESPAWN_DIST = 10;
   const MAX_SENTINELS = 10;
+
+  // Sentinel telegraph/dash
+  const TELEGRAPH_RANGE_TILES = 4;     // start thinking about dashing if close
+  const TELEGRAPH_TIME = 0.33;         // warning flash duration
+  const DASH_TIME = 0.60;              // burst duration
+  const DASH_SPEED_MULT = 1.65;        // dash speed multiplier
+  const DASH_COOLDOWN = 2.2;           // time before can dash again
+  const LOS_ONLY_TELEGRAPH = true;     // only telegraph if corridor line-of-sight
+
+  // Projectiles
+  const PROJECTILE_SPEED = 15.0; // cells/sec in grid units
+  const PROJECTILE_LIFE = 0.9;   // seconds
+  const PROJECTILE_HIT_INVULN = 0.15;
+
+  // ---------------------------
+  // Weapon definitions
+  // ---------------------------
+  const WEAPONS = {
+    sword: {
+      id: 'sword',
+      name: 'SWORD',
+      mk: 'Mk1',
+      cost: 20,
+      cooldown: 0.28,
+      hint: 'timing slash • hit → i-frames',
+      action: 'MELEE',
+      range: 1,
+      dmg: 1,
+      iframesOnHit: 0.55
+    },
+    blaster: {
+      id: 'blaster',
+      name: 'BLASTER',
+      mk: 'Mk2',
+      cost: 14,
+      cooldown: 0.22,
+      hint: 'ranged shot • first hit',
+      action: 'PROJECTILE',
+      range: 10,
+      dmg: 1,
+      iframesOnHit: 0.18
+    },
+    flame: {
+      id: 'flame',
+      name: 'FLAME',
+      mk: 'Mk3',
+      cost: 34,
+      cooldown: 0.55,
+      hint: 'corridor sweep • melts line',
+      action: 'CORRIDOR',
+      range: 8,
+      dmg: 99, // effectively kill
+      iframesOnHit: 0.22
+    }
+  };
 
   // ---------------------------
   // Helpers
@@ -648,6 +709,7 @@
 
     attackCD: 0,
     attackFlash: 0,
+    attackEffect: 0, // for flame sweep or shot flash
 
     hitFlash: 0,
     map: null,
@@ -655,6 +717,8 @@
     exitReady: false,
 
     rand: mulberry32((Date.now()>>>0) ^ 0xA5A5A5),
+
+    weaponId: 'sword',
 
     p: {
       x:1,y:1, px:1,py:1,
@@ -665,8 +729,28 @@
     },
 
     enemies: [],
-    respawns: []
+    respawns: [],
+
+    projectiles: [] // {px,py,dx,dy,life, dmg}
   };
+
+  function currentWeapon(){
+    return WEAPONS[state.weaponId] || WEAPONS.sword;
+  }
+
+  function checkWeaponProgression(){
+    const prev = state.weaponId;
+    if(state.stage >= UNLOCK_FLAME_STAGE) state.weaponId = 'flame';
+    else if(state.stage >= UNLOCK_BLASTER_STAGE) state.weaponId = 'blaster';
+    else state.weaponId = 'sword';
+
+    if(state.weaponId !== prev){
+      const w = currentWeapon();
+      showToast(`WEAPON UPGRADE → ${w.name} ${w.mk}`);
+      // small reward: a bit of fury so you can test it immediately
+      state.fury = clamp(state.fury + 25, 0, MAX_FURY);
+    }
+  }
 
   function isWall(x,y){
     const g = state.map.grid;
@@ -762,19 +846,26 @@
       x, y,
       px:x, py:y,
       dx:0, dy:0,
+      baseSpeed: speed,
       speed,
       stepAge: 0,
       stuckAge: 0,
-      invuln: 0.25, // short spawn protection
+      invuln: 0.25,
+
+      // combat/telegraph
       level,
       hpMax,
-      hp: hpMax
+      hp: hpMax,
+      telegraph: 0,
+      dash: 0,
+      dashCD: 0
     });
   }
 
   function spawnStageSentinels(){
     state.enemies.length = 0;
     state.respawns.length = 0;
+    state.projectiles.length = 0;
 
     const count = Math.min(MAX_SENTINELS, 1 + Math.floor(state.stage / 2));
     const p = state.p;
@@ -786,6 +877,7 @@
   }
 
   function resetStage(){
+    checkWeaponProgression();
     state.map = genMaze(state.stage);
 
     state.p.x = state.p.px = 1;
@@ -801,6 +893,7 @@
     state.powerCooldown = 0;
     state.attackCD = 0;
     state.attackFlash = 0;
+    state.attackEffect = 0;
 
     showToast(`Stage ${state.stage}`);
   }
@@ -815,6 +908,7 @@
     state.multDecay = 0;
     state.gameOver = false;
     state.hitFlash = 0;
+    state.weaponId = 'sword';
     resetStage();
     showToast('New Run');
   }
@@ -824,10 +918,7 @@
   // ---------------------------
   // Input
   // ---------------------------
-  const input = {
-    up:false, down:false, left:false, right:false,
-    power:false, attack:false
-  };
+  const input = { up:false, down:false, left:false, right:false, power:false, attack:false };
 
   function setWanted(dir){ state.p.want = dir; }
   function setWantedFromInput(){
@@ -1007,65 +1098,130 @@
     showToast('POWER');
   }
 
-  function tryAttack(){
-    if(state.attackCD>0) return;
-
-    if(state.fury < ATTACK_COST){
-      state.attackCD = 0.10;
-      return;
+  function corridorLineOfSight(ax,ay,bx,by){
+    if(ax===bx){
+      const step = by>ay ? 1 : -1;
+      for(let y=ay+step; y!==by; y+=step){
+        if(isWall(ax,y)) return false;
+      }
+      return true;
     }
+    if(ay===by){
+      const step = bx>ax ? 1 : -1;
+      for(let x=ax+step; x!==bx; x+=step){
+        if(isWall(x,ay)) return false;
+      }
+      return true;
+    }
+    return false;
+  }
 
-    state.fury = clamp(state.fury - ATTACK_COST, 0, MAX_FURY);
-    state.attackCD = ATTACK_CD;
+  function tryAttack(){
+    const wpn = currentWeapon();
+    if(state.attackCD>0) return;
+    if(state.fury < wpn.cost) { state.attackCD = 0.08; return; }
+
+    state.fury = clamp(state.fury - wpn.cost, 0, MAX_FURY);
+    state.attackCD = wpn.cooldown;
     state.attackFlash = 0.16;
+    state.attackEffect = 0.18;
 
     const p = state.p;
     const dir = (p.dir.x===0 && p.dir.y===0) ? p.want : p.dir;
-    const tx = p.x + dir.x * ATTACK_RANGE;
-    const ty = p.y + dir.y * ATTACK_RANGE;
+    const dx = dir.x, dy = dir.y;
 
-    let connected = false;
-
-    for(const s of state.enemies){
-      if(s.invuln>0) continue;
-      if(s.x===tx && s.y===ty){
-        s.hp -= 1;
-        connected = true;
-
-        // KEY CHANGE: if we CONNECT, grant i-frames so you can run past safely.
-        p.invuln = Math.max(p.invuln, ATTACK_IFRAMES_ON_HIT);
-
-        if(s.hp <= 0){
-          killSentinel(s);
-          showToast('KILL → FULL HEAL (splits!)');
-        } else {
-          showToast(`SLASH! (${s.hp}/${s.hpMax})`);
-        }
-        break;
-      }
+    if(dx===0 && dy===0){
+      showToast('NO DIRECTION');
+      return;
     }
 
-    // If you miss, you DON'T get i-frames — so charging past is risky.
-    if(!connected){
-      showToast('MISS');
+    if(wpn.action === 'MELEE'){
+      const tx = p.x + dx * wpn.range;
+      const ty = p.y + dy * wpn.range;
+      let connected = false;
+
+      for(const s of state.enemies){
+        if(s.invuln>0) continue;
+        if(s.x===tx && s.y===ty){
+          connected = true;
+          s.hp -= wpn.dmg;
+
+          // KEY: ONLY on HIT -> i-frames, so you can charge past safely
+          p.invuln = Math.max(p.invuln, wpn.iframesOnHit);
+
+          if(s.hp <= 0){
+            killSentinel(s);
+            showToast('KILL → FULL HEAL (splits!)');
+          } else {
+            showToast(`SLASH! (${s.hp}/${s.hpMax})`);
+          }
+          break;
+        }
+      }
+      if(!connected) showToast('MISS');
+      return;
+    }
+
+    if(wpn.action === 'PROJECTILE'){
+      // Spawn a projectile at player center moving in dir
+      state.projectiles.push({
+        px: p.px,
+        py: p.py,
+        dx, dy,
+        life: PROJECTILE_LIFE,
+        dmg: wpn.dmg
+      });
+      showToast('PEW');
+      return;
+    }
+
+    if(wpn.action === 'CORRIDOR'){
+      // Hit every sentinel in a corridor line until wall
+      let hits = 0;
+      for(let step=1; step<=wpn.range; step++){
+        const tx = p.x + dx*step;
+        const ty = p.y + dy*step;
+        if(isWall(tx,ty)) break;
+
+        for(const s of state.enemies){
+          if(s.invuln>0) continue;
+          if(s.x===tx && s.y===ty){
+            hits++;
+            s.hp -= wpn.dmg;
+            s.invuln = Math.max(s.invuln, 0.12); // prevents double-hit in same sweep
+            if(s.hp <= 0) killSentinel(s);
+          }
+        }
+      }
+      if(hits>0){
+        p.invuln = Math.max(p.invuln, wpn.iframesOnHit);
+        state.hp = MAX_HP; // flame feels “dominant”
+        showToast(`BURN (${hits})`);
+      } else {
+        showToast('WHOOSH');
+      }
+      return;
     }
   }
 
   function killSentinel(s){
+    // Full heal on kill
     state.hp = MAX_HP;
     state.hitFlash = 0.25;
 
+    // remove from active list
     const idx = state.enemies.indexOf(s);
     if(idx>=0) state.enemies.splice(idx,1);
 
+    // schedule respawn + split into 2 further away
     const p = state.p;
     const pos = findFarSpawn(p.x,p.y, MIN_RESPAWN_DIST);
 
     const childLevel = (s.level || 1) + 1;
     const childHpMax = Math.max(2, Math.floor((s.hpMax || BASE_SENTINEL_HP) * 0.7));
-    const childSpeed = Math.min(8.0, (s.speed || 5.6) * 1.05);
+    const childSpeed = Math.min(8.0, (s.baseSpeed || 5.6) * 1.05);
 
-    state.respawns.push({ t: RESPAWN_DELAY, x: pos.x, y: pos.y, level: childLevel, hpMax: childHpMax, speed: childSpeed, count: 2 });
+    state.respawns.push({ t: RESPAWN_DELAY, x: pos.x, y: pos.y, level: childLevel, hpMax: childHpMax, speed: childSpeed });
   }
 
   // ---------------------------
@@ -1121,22 +1277,26 @@
   }
 
   // ---------------------------
-  // Modal controls
-  // ---------------------------
-  function openModal(){ modalBack.classList.add('show'); paused = true; requestAnimationFrame(resize); }
-  function closeModal(){
-    modalBack.classList.remove('show');
-    paused = false;
-    requestAnimationFrame(() => { resize(); last = performance.now(); render(0); });
-  }
-
-  // ---------------------------
-  // Enemy step
+  // Sentinels
   // ---------------------------
   function stepEnemy(s, dt){
     s.invuln = Math.max(0, s.invuln - dt);
     s.stepAge += dt;
 
+    // Telegraph/dash timers
+    s.dashCD = Math.max(0, s.dashCD - dt);
+    if(s.telegraph > 0){
+      s.telegraph = Math.max(0, s.telegraph - dt);
+      // during telegraph they “brace” (slightly slower)
+      s.speed = s.baseSpeed * 0.75;
+    } else if(s.dash > 0){
+      s.dash = Math.max(0, s.dash - dt);
+      s.speed = s.baseSpeed * DASH_SPEED_MULT;
+    } else {
+      s.speed = s.baseSpeed;
+    }
+
+    // update cell lock
     if(atCellCenter(s.px,s.py)){
       const cx = Math.round(s.px);
       const cy = Math.round(s.py);
@@ -1144,15 +1304,30 @@
       s.px = cx; s.py = cy;
     }
 
+    // Possibly start telegraph if close enough + cooldown ready
+    const p = state.p;
+    const distTiles = manhattan(s.x, s.y, p.x, p.y);
+    if(s.telegraph<=0 && s.dash<=0 && s.dashCD<=0 && distTiles <= TELEGRAPH_RANGE_TILES){
+      const okLOS = !LOS_ONLY_TELEGRAPH || corridorLineOfSight(s.x,s.y,p.x,p.y);
+      if(okLOS){
+        s.telegraph = TELEGRAPH_TIME;
+        s.dash = DASH_TIME;     // queued; begins after telegraph ends (we’ll let speed logic handle it)
+        s.dashCD = DASH_COOLDOWN;
+        // make dash begin after telegraph by delaying dash countdown:
+        // quick trick: start dash at DASH_TIME but freeze it during telegraph by adding back dt later in tick
+      }
+    }
+
+    // choose direction periodically or at cell center
     if(atCellCenter(s.px,s.py) || s.stepAge > 0.20){
       s.stepAge = 0;
 
-      const p = state.p;
       const step = nextStepToward(s.x,s.y, p.x,p.y);
 
       let dx = clamp(step.x - s.x, -1, 1);
       let dy = clamp(step.y - s.y, -1, 1);
 
+      // if BFS fails, choose a valid neighbor to avoid freezing
       if((dx===0 && dy===0) || !canMoveTo(s.x+dx, s.y+dy)){
         const opts = [];
         if(canMoveTo(s.x+1,s.y)) opts.push({dx:1,dy:0});
@@ -1184,10 +1359,10 @@
       s.dx = dx; s.dy = dy;
     }
 
-    const spd = s.speed;
+    // movement
     if(s.dx || s.dy){
-      s.px += s.dx * spd * dt;
-      s.py += s.dy * spd * dt;
+      s.px += s.dx * s.speed * dt;
+      s.py += s.dy * s.speed * dt;
 
       const cx = Math.round(s.px);
       const cy = Math.round(s.py);
@@ -1199,11 +1374,64 @@
   }
 
   // ---------------------------
-  // Stage spawn
+  // Projectiles update
+  // ---------------------------
+  function stepProjectiles(dt){
+    for(let i=state.projectiles.length-1;i>=0;i--){
+      const pr = state.projectiles[i];
+      pr.life -= dt;
+      if(pr.life <= 0){
+        state.projectiles.splice(i,1);
+        continue;
+      }
+
+      // move
+      pr.px += pr.dx * PROJECTILE_SPEED * dt;
+      pr.py += pr.dy * PROJECTILE_SPEED * dt;
+
+      // wall hit (sample the nearest cell)
+      const cx = Math.round(pr.px);
+      const cy = Math.round(pr.py);
+      if(isWall(cx,cy)){
+        state.projectiles.splice(i,1);
+        continue;
+      }
+
+      // enemy hit: nearest enemy within small radius
+      let hit = null;
+      for(const s of state.enemies){
+        if(s.invuln>0) continue;
+        const d = Math.hypot(pr.px - s.px, pr.py - s.py);
+        if(d < 0.33){
+          hit = s; break;
+        }
+      }
+      if(hit){
+        hit.hp -= pr.dmg;
+        hit.invuln = Math.max(hit.invuln, PROJECTILE_HIT_INVULN);
+
+        // small reward: i-frames feel for blaster connection
+        const wpn = currentWeapon();
+        state.p.invuln = Math.max(state.p.invuln, wpn.iframesOnHit);
+
+        if(hit.hp <= 0){
+          killSentinel(hit);
+          showToast('KILL → FULL HEAL');
+        } else {
+          showToast('HIT');
+        }
+        state.projectiles.splice(i,1);
+      }
+    }
+  }
+
+  // ---------------------------
+  // Stage init
   // ---------------------------
   function spawnStageSentinels(){
     state.enemies.length = 0;
     state.respawns.length = 0;
+    state.projectiles.length = 0;
 
     const count = Math.min(MAX_SENTINELS, 1 + Math.floor(state.stage / 2));
     const p = state.p;
@@ -1212,40 +1440,6 @@
       const pos = findFarSpawn(p.x,p.y, MIN_RESPAWN_DIST);
       spawnSentinelAt(pos.x,pos.y, 1, 5.6, BASE_SENTINEL_HP);
     }
-  }
-
-  function resetStage(){
-    state.map = genMaze(state.stage);
-
-    state.p.x = state.p.px = 1;
-    state.p.y = state.p.py = 1;
-    state.p.dir = {x:1,y:0};
-    state.p.want = {x:1,y:0};
-    state.p.invuln = 0;
-
-    spawnStageSentinels();
-
-    state.exitReady = false;
-    state.powerTimer = 0;
-    state.powerCooldown = 0;
-    state.attackCD = 0;
-    state.attackFlash = 0;
-
-    showToast(`Stage ${state.stage}`);
-  }
-
-  function resetRun(){
-    state.stage = 1;
-    state.score = 0;
-    state.hp = MAX_HP;
-    state.hunger = 0;
-    state.fury = 0;
-    state.multiplier = 1.0;
-    state.multDecay = 0;
-    state.gameOver = false;
-    state.hitFlash = 0;
-    resetStage();
-    showToast('New Run');
   }
 
   // ---------------------------
@@ -1269,12 +1463,15 @@
       return;
     }
 
+    const wpn = currentWeapon();
+
     // timers
     state.p.invuln = Math.max(0, state.p.invuln - dt);
     state.powerTimer = Math.max(0, state.powerTimer - dt);
     state.powerCooldown = Math.max(0, state.powerCooldown - dt);
     state.attackCD = Math.max(0, state.attackCD - dt);
     state.attackFlash = Math.max(0, state.attackFlash - dt);
+    state.attackEffect = Math.max(0, state.attackEffect - dt);
     state.hitFlash = Math.max(0, state.hitFlash - dt*1.8);
 
     // actions
@@ -1370,10 +1567,6 @@
     if(p.x===exit.x && p.y===exit.y && state.exitReady){
       state.stage++;
       state.score += Math.round(75 * state.multiplier);
-      // NOTE: fury carries (feels good). If you want reset per stage, tell me.
-      spawnStageSentinels();
-      state.map = genMaze(state.stage);
-      // re-seed stage fully with resetStage() to ensure player resets too
       resetStage();
       render(dt);
       return;
@@ -1384,7 +1577,10 @@
       stepEnemy(s, dt);
     }
 
-    // Collision (IMPORTANT: i-frames from successful slash prevents pass-through damage)
+    // PROJECTILES
+    stepProjectiles(dt);
+
+    // Collision (i-frames from weapon hits prevent “run-through damage”)
     for(const s of state.enemies){
       if(p.invuln>0) break;
       const dist = Math.hypot((p.px - s.px), (p.py - s.py));
@@ -1398,27 +1594,31 @@
       }
     }
 
-    // Respawns (split)
+    // Respawns (split into 2)
     for(let i=state.respawns.length-1; i>=0; i--){
       const r = state.respawns[i];
       r.t -= dt;
       if(r.t <= 0){
         state.respawns.splice(i,1);
+
         const ppos1 = findFarSpawn(p.x,p.y, MIN_RESPAWN_DIST);
         spawnSentinelAt(ppos1.x, ppos1.y, r.level, r.speed, r.hpMax);
+
         const ppos2 = findFarSpawn(p.x,p.y, MIN_RESPAWN_DIST);
         spawnSentinelAt(ppos2.x, ppos2.y, r.level, r.speed, r.hpMax);
       }
     }
 
-    // death
+    // Death
     state.hp = clamp(state.hp, 0, MAX_HP);
     if(state.hp<=0){
       state.gameOver = true;
       showToast('SYSTEM FAILURE — Tap to restart');
     }
 
+    // ---------------------------
     // UI update
+    // ---------------------------
     uiScore.textContent = String(state.score);
     uiMult.textContent = `×${state.multiplier.toFixed(1)} ${movingInput ? 'rolling' : 'decay'}`;
 
@@ -1434,11 +1634,10 @@
     uiHunFill.style.width = `${state.hunger}%`;
     uiFurFill.style.width = `${(state.fury/MAX_FURY)*100}%`;
 
-    // Weapon panel (future-proof; right now Sword Mk1)
-    uiWeaponName.textContent = 'SWORD';
-    uiWeaponInfo.textContent = `Mk1 • cost ${ATTACK_COST} • range ${ATTACK_RANGE}`;
+    uiWeaponName.textContent = wpn.name;
+    uiWeaponInfo.textContent = `${wpn.mk} • cost ${wpn.cost} • ${wpn.action==='MELEE' ? 'range '+wpn.range : (wpn.action==='PROJECTILE' ? 'ranged' : 'sweep')}`;
 
-    const need = Math.max(0, ATTACK_COST - state.fury);
+    const need = Math.max(0, wpn.cost - state.fury);
     if(state.attackCD>0){
       uiAtkReady.textContent = `ATTACK: cooling (${state.attackCD.toFixed(2)}s)`;
     } else if(need>0){
@@ -1454,15 +1653,14 @@
     // Buttons
     btnPower.classList.toggle('active', state.powerTimer>0);
     btnPower.classList.toggle('disabled', state.powerCooldown>0 && state.powerTimer<=0);
-    btnPower.classList.toggle('hot', state.powerCooldown<=0 && state.powerTimer<=0);
 
+    const attackReady = (state.attackCD<=0 && state.fury >= wpn.cost);
     btnAttack.classList.toggle('active', state.attackFlash>0);
-    btnAttack.classList.toggle('disabled', state.attackCD>0 || state.fury < ATTACK_COST);
-    btnAttack.classList.toggle('hot', state.attackCD<=0 && state.fury >= ATTACK_COST);
+    btnAttack.classList.toggle('disabled', !attackReady && state.attackCD<=0 ? true : state.attackCD>0);
+    btnAttack.classList.toggle('attack-ready', attackReady);
 
-    // Button label also indicates readiness (so even if stats row wraps, you still see it)
     if(state.attackCD>0) btnAttack.textContent = 'ATTACK (CD)';
-    else if(state.fury < ATTACK_COST) btnAttack.textContent = `ATTACK (NEED ${need})`;
+    else if(!attackReady) btnAttack.textContent = `ATTACK (NEED ${need})`;
     else btnAttack.textContent = 'ATTACK (READY)';
 
     render(dt);
@@ -1534,18 +1732,52 @@
     ctx.lineWidth = 2;
     ctx.strokeRect(ex+4, ey+4, CELL-8, CELL-8);
 
-    // enemies
+    // projectiles
+    for(const pr of state.projectiles){
+      const cx = pr.px*CELL + CELL*0.5;
+      const cy = pr.py*CELL + CELL*0.5;
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = 'rgba(255,211,110,0.65)';
+      ctx.fillStyle = 'rgba(255,211,110,0.90)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 4.5, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    // enemies + telegraphs
     for(const s of state.enemies){
       const ecx = s.px*CELL + CELL*0.5;
       const ecy = s.py*CELL + CELL*0.5;
 
+      // telegraph ring + exclamation
+      if(s.telegraph > 0){
+        const t = s.telegraph / TELEGRAPH_TIME;
+        ctx.shadowBlur = 22;
+        ctx.shadowColor = 'rgba(255,90,122,0.85)';
+        ctx.strokeStyle = `rgba(255,90,122,${0.25 + 0.55*(1-t)})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(ecx, ecy, CELL*0.62 + (1-t)*6, 0, Math.PI*2);
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(255,211,110,0.95)';
+        ctx.font = 'bold 16px system-ui';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('!', ecx, ecy - CELL*0.62);
+      }
+
+      // sentinel body
       ctx.shadowBlur = 14;
-      ctx.shadowColor = 'rgba(255,90,122,0.55)';
+      ctx.shadowColor = (s.dash>0) ? 'rgba(255,90,122,0.85)' : 'rgba(255,90,122,0.55)';
       ctx.beginPath();
       ctx.arc(ecx, ecy, CELL*0.34, 0, Math.PI*2);
-      ctx.fillStyle = 'rgba(255,90,122,0.83)';
+      const dashTint = s.dash>0 ? 0.95 : 0.83;
+      ctx.fillStyle = `rgba(255,90,122,${dashTint})`;
       ctx.fill();
 
+      // hp pip
       const frac = s.hpMax>0 ? (s.hp/s.hpMax) : 0;
       ctx.shadowBlur = 0;
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
@@ -1561,8 +1793,17 @@
     const mouth = 0.55 + 0.25*Math.sin(performance.now()/85);
     const ang = Math.atan2(p.dir.y, p.dir.x);
 
+    // Player glow:
+    // - cyan when invulnerable in general
+    // - gold when invuln + a recent attack effect (successful hit feedback)
     ctx.shadowBlur = 16;
-    ctx.shadowColor = (p.invuln>0) ? 'rgba(125,249,255,0.6)' : 'rgba(232,233,255,0.35)';
+    if(p.invuln > 0 && state.attackEffect > 0){
+      ctx.shadowBlur = 28;
+      ctx.shadowColor = 'rgba(255,211,110,0.90)';
+    } else {
+      ctx.shadowColor = (p.invuln>0) ? 'rgba(125,249,255,0.6)' : 'rgba(232,233,255,0.35)';
+    }
+
     ctx.beginPath();
     ctx.moveTo(pcx, pcy);
     ctx.arc(pcx, pcy, CELL*0.36, ang+mouth, ang+(Math.PI*2-mouth));
@@ -1581,22 +1822,44 @@
       ctx.stroke();
     }
 
-    // attack slash
+    // attack visuals
+    const wpn = currentWeapon();
     if(state.attackFlash>0){
       const dir = (p.dir.x===0 && p.dir.y===0) ? p.want : p.dir;
       const tx = (p.x + dir.x)*CELL + CELL*0.5;
       const ty = (p.y + dir.y)*CELL + CELL*0.5;
 
-      ctx.shadowBlur = 18;
-      ctx.shadowColor = 'rgba(255,211,110,0.65)';
-      ctx.strokeStyle = 'rgba(255,211,110,0.85)';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(pcx, pcy);
-      ctx.lineTo(tx, ty);
-      ctx.stroke();
+      if(wpn.action === 'MELEE'){
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = 'rgba(255,211,110,0.65)';
+        ctx.strokeStyle = 'rgba(255,211,110,0.85)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(pcx, pcy);
+        ctx.lineTo(tx, ty);
+        ctx.stroke();
+      } else if(wpn.action === 'CORRIDOR'){
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = 'rgba(255,211,110,0.65)';
+        ctx.strokeStyle = 'rgba(255,211,110,0.70)';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(pcx, pcy);
+        // draw until wall
+        let endx = pcx, endy = pcy;
+        for(let step=1; step<=wpn.range; step++){
+          const gx = p.x + dir.x*step;
+          const gy = p.y + dir.y*step;
+          if(isWall(gx,gy)) break;
+          endx = gx*CELL + CELL*0.5;
+          endy = gy*CELL + CELL*0.5;
+        }
+        ctx.lineTo(endx, endy);
+        ctx.stroke();
+      }
     }
 
+    // paused / gameover overlays
     if(paused){
       ctx.shadowBlur = 0;
       ctx.fillStyle = 'rgba(0,0,0,0.62)';
